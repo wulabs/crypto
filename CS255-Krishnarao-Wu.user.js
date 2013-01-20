@@ -1,7 +1,7 @@
 // ==UserScript==
-// @namespace      CS255-Lastname1-Lastname2
-// @name           CS255-Lastname1-Lastname2
-// @description    CS255-Lastname1-Lastname2 - CS255 Assignment 1
+// @namespace      CS255-Krishnarao-Wu
+// @name           CS255-Krishnarao-Wu
+// @description    CS255-Krishnarao-Wu - CS255 Assignment 1
 // @version        1.2
 //
 // 
