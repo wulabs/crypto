@@ -26,6 +26,7 @@
 
 var my_username; // user signed in as
 var keys = {}; // association map of keys: group -> key
+var kdp = "kdp"; // key database password cookie name
 
 // Some initialization functions are called at the very end of this script.
 // You only have to edit the top portion.
@@ -83,10 +84,13 @@ function GenerateKey(group) {
 // Take the current group keys, and save them to disk.
 function SaveKeys() {
   
-  // CS255-todo: plaintext keys going to disk?
   var key_str = JSON.stringify(keys);
+  var password = GetPassword(true);
+
+  key_str = encryptString(key_str);
 
   localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
+
 }
 
 // Load the group keys from disk.
@@ -95,11 +99,13 @@ function LoadKeys() {
     var saved = localStorage.getItem('facebook-keys-' + my_username);
     if (saved) {
         var key_str = decodeURIComponent(saved);
-
-        // CS255-todo: plaintext keys were on disk?
         var password = GetPassword(true);
 
+        key_str = decryptString(key_str);
+
         keys = JSON.parse(key_str);
+    } else {
+        console.log("Debug: LoadKeys(): Nothing got from local storage");
     }
 }
 
@@ -117,16 +123,44 @@ function LoadKeys() {
 // First time use (unset cookie), user is prompted to enter password
 function GetPassword(fromCookie) {
     var password;
+    var enc_passwd;
 
-    if(fromCookie === true)
-        password = GetCookie("kdp");
+    if(fromCookie == true) {
+        enc_passwd = readCookie(kdp);
+        password = decryptString(enc_passwd);
+    }
 
-    if(fromCookie === false || password == "") {
+    if(fromCookie == false || password == "") {
         password = prompt("Enter key database password", "");
-        SetCookie("kdp", password);
+        enc_passwd = encryptString(password);
+        createCookie(kdp, enc_passwd);
     }
 
     return password;
+}
+
+function encryptString(str) {
+
+    if (str == null) return null;
+
+    var enc_str;
+
+    // todo
+    enc_str = str;
+
+    return enc_str;
+}
+
+function decryptString(enc_str) {
+
+    if (str == null) return null;
+
+    var str;
+
+    // todo
+    str = enc_str;
+
+    return str;
 }
 
 function IntArrayToHexStr(intArray) {
@@ -143,25 +177,6 @@ function IntArrayToHexStr(intArray) {
     str = str + '';
 
     return str;
-}
-
-// Sets cookie to value
-function SetCookie(name, value) {
-    document.cookie = name + "=" + escape(value);
-}
-
-
-// Get cookie for key matching name.
-// Taken from: http://www.quirksmode.org/js/cookies.html
-function GetCookie(name) {
-    var nameEQ = name + "=";
-    var ca = document.cookie.split(';');
-    for(var i = 0; i < ca.length; i++) {
-        var c = ca[i];
-        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-    }
-    return null;
 }
 
 
