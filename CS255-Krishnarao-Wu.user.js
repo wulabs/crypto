@@ -453,7 +453,7 @@ function UpdateKeysTable() {
   table.appendChild(row);
 
   // keys
-  for (group in keys) {
+  for (var group in keys) {
     var row = document.createElement('tr');
     row.setAttribute("data-group", group);
     var td = document.createElement('td');
