@@ -91,22 +91,43 @@ function SaveKeys() {
 
 // Load the group keys from disk.
 function LoadKeys() {
-  keys = {}; // Reset the keys.
-  var saved = localStorage.getItem('facebook-keys-' + my_username);
-  if (saved) {
-    var key_str = decodeURIComponent(saved);
-    // CS255-todo: plaintext keys were on disk?
-    keys = JSON.parse(key_str);
-  }
+    keys = {}; // Reset the keys.
+    var saved = localStorage.getItem('facebook-keys-' + my_username);
+    if (saved) {
+        var key_str = decodeURIComponent(saved);
+
+        // CS255-todo: plaintext keys were on disk?
+        var password = GetPassword(true);
+
+        keys = JSON.parse(key_str);
+    }
 }
 
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
 //
-// Help Functions
+// Helper Functions
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+
+// Get password via prompt, and store in cookie
+// Set fromCookie argument to true to get password from cookie.
+// Set fromCookie argument to false to force UI to request password
+// First time use (unset cookie), user is prompted to enter password
+function GetPassword(fromCookie) {
+    var password;
+
+    if(fromCookie === true)
+        password = GetCookie("kdp");
+
+    if(fromCookie === false || password == "") {
+        password = prompt("Enter key database password", "");
+        SetCookie("kdp", password);
+    }
+
+    return password;
+}
 
 function IntArrayToHexStr(intArray) {
     var val = 0;
@@ -123,6 +144,26 @@ function IntArrayToHexStr(intArray) {
 
     return str;
 }
+
+// Sets cookie to value
+function SetCookie(name, value) {
+    document.cookie = name + "=" + escape(value);
+}
+
+
+// Get cookie for key matching name.
+// Taken from: http://www.quirksmode.org/js/cookies.html
+function GetCookie(name) {
+    var nameEQ = name + "=";
+    var ca = document.cookie.split(';');
+    for(var i = 0; i < ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+}
+
 
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
