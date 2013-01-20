@@ -73,12 +73,11 @@ function Decrypt(cipherText, group) {
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
+    var randomIntArray = GetRandomValues(32);   //256bit key (32 chunks of 8)
+    var key = IntArrayToHexStr(randomIntArray);
 
-  // CS255-todo: Well this needs some work...
-  var key = 'CS255-todo';
-
-  keys[group] = key;
-  SaveKeys();
+    keys[group] = key;
+    SaveKeys();
 }
 
 // Take the current group keys, and save them to disk.
@@ -99,6 +98,30 @@ function LoadKeys() {
     // CS255-todo: plaintext keys were on disk?
     keys = JSON.parse(key_str);
   }
+}
+
+/////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+//
+// Help Functions
+//
+/////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+
+function IntArrayToHexStr(intArray) {
+    var val = 0;
+    var str = new String();
+
+    for(var i=0; i<intArray.length; i++) {
+        val = intArray[i];
+        val += 2147483648;
+        var s = val.toString(16);
+        s = Array(9 - s.length).join('0') + s;
+        str += s;
+    }
+    str = str + '';
+
+    return str;
 }
 
 /////////////////////////////////////////////////////////
