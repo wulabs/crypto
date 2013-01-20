@@ -96,6 +96,7 @@ function SaveKeys() {
 // Load the group keys from disk.
 function LoadKeys() {
     keys = {}; // Reset the keys.
+
     var saved = localStorage.getItem('facebook-keys-' + my_username);
     if (saved) {
         var key_str = decodeURIComponent(saved);
@@ -141,8 +142,6 @@ function GetPassword(fromCookie) {
 
 function encryptString(str) {
 
-    if (str == null) return null;
-
     var enc_str;
 
     // todo
@@ -152,8 +151,6 @@ function encryptString(str) {
 }
 
 function decryptString(enc_str) {
-
-    if (str == null) return null;
 
     var str;
 
