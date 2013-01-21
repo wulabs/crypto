@@ -37,6 +37,9 @@ var kdp = "kdp"; // key database password cookie name
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
+
+  console.log("Debug: " + group + " = " + keys[group]);
+  
   // CS255-todo: encrypt the plainText, using key for the group.
   if ((plainText.indexOf('rot13:') == 0) || (plainText.length < 1)) {
     // already done, or blank
@@ -57,8 +60,8 @@ function Encrypt(plainText, group) {
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
 
+  console.log("Debug: " + group + " = " + keys[group]);
   // CS255-todo: implement decryption on encrypted messages
-
   if (cipherText.indexOf('rot13:') == 0) {
 
     // decrypt, ignore the tag.
@@ -97,16 +100,21 @@ function SaveKeys() {
 function LoadKeys() {
     keys = {}; // Reset the keys.
 
+    var i, k, v;
+    console.log("localStorage.length = " + localStorage.length);
+    
+    for (i =0; i<localStorage.length; i++) {
+        k = localStorage.key(i);
+       v = localStorage.getItem(k);
+        console.log("---" + k + " = " + v);
+    }
+
     var saved = localStorage.getItem('facebook-keys-' + my_username);
     if (saved) {
         var key_str = decodeURIComponent(saved);
         var password = GetPassword(true);
-
         key_str = decryptString(key_str);
-
         keys = JSON.parse(key_str);
-    } else {
-        console.log("Debug: LoadKeys(): Nothing got from local storage");
     }
 }
 
@@ -126,15 +134,19 @@ function GetPassword(fromCookie) {
     var password;
     var enc_passwd;
 
+    console.log("Debug: GetPassword()");
+    
     if(fromCookie == true) {
         enc_passwd = readCookie(kdp);
         password = decryptString(enc_passwd);
     }
 
-    if(fromCookie == false || password == "") {
+    console.log("Debug: UserPassword = " + password);
+    
+    if(fromCookie == false || password == null) {
         password = prompt("Enter key database password", "");
         enc_passwd = encryptString(password);
-        createCookie(kdp, enc_passwd);
+        createSessionCookie(kdp, enc_passwd);
     }
 
     return password;
@@ -144,9 +156,8 @@ function encryptString(str) {
 
     var enc_str;
 
-    // todo
+    // todo 
     enc_str = str;
-
     return enc_str;
 }
 
