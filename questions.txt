@@ -1,0 +1,17 @@
+1. We currently use createSessionCookie() and readcookie(). Should we also
+   use eraseCookie()? If so, when? Do we write a UI for it? What happens
+   if a user forgets the password? 
+
+
+2. There are 2 custom functions encryptString and decryptString. These 
+   functions are used to encrypt the user password. What key should we
+   use for this?
+
+
+3. In the sample code, decryption is done only if the message is prefixed with
+   'rot13:'. Do we also have a similar convention or can we always attempt
+   decryption?
+
+ 
+ 4. If all messages posted in the group are encrypted using the same
+    key from the group->key table, isnt this similar to an OTP (multi-time-pad)
