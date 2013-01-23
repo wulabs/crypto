@@ -24,6 +24,7 @@
 // See http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 "use strict";
 
+var debug = 1;
 var my_username; // user signed in as
 var keys = {}; // association map of keys: group -> key
 var kdp = "kdp"; // key database password cookie name
@@ -37,18 +38,31 @@ var kdp = "kdp"; // key database password cookie name
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
+  var intstr = strToInt(plainText);
+  var len = intstr.length;
+  var i;
+  var key = keys[group];
+  var cipher = new sjcl.cipher.aes(key);
+  var intext = new Array(4);
+  var ctext;
+  var estring;
 
-  console.log("Debug: " + group + " = " + keys[group]);
-  
-  // CS255-todo: encrypt the plainText, using key for the group.
-  if ((plainText.indexOf('rot13:') == 0) || (plainText.length < 1)) {
-    // already done, or blank
-    alert("Try entering a message (the button works only once)");
-    return plainText;
-  } else {
-    // encrypt, add tag.
-    return 'rot13:' + rot13(plainText);
+  // todo: Fix this: Encrypt the first 4 ascii chars (for now).
+  for (i=0; i<len; i+=4) {
+    intext[0] = intstr[i];
+    intext[1] = intstr[i+1];
+    intext[2] = intstr[i+2];
+    intext[3] = intstr[i+3];
+    estring = cipher.encrypt(intext);
   }
+
+  Log("Debug: Encrypt(): key length = " + key.length);
+  Log("Debug: Encrypt(): key = " + key);
+  Log("Debug: Encrypt(): Group = " + group);
+  Log("Debug: Encrypt(): Encrypted string = " + estring);
+  Log("Debug: Encrypt(): decrypt attempt1 = " + cipher.decrypt(estring));
+
+  return estring;
 
 }
 
@@ -60,27 +74,33 @@ function Encrypt(plainText, group) {
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
 
-  console.log("Debug: " + group + " = " + keys[group]);
-  // CS255-todo: implement decryption on encrypted messages
-  if (cipherText.indexOf('rot13:') == 0) {
+  // Need to convert the string into an array.
+  // todo: Works only with 4 char strings. fix it.
+  var ctext = cipherText.split(",");
+  var key = keys[group];
+  var cipher = new sjcl.cipher.aes(key);
+  var outtext = cipher.decrypt(ctext);
 
-    // decrypt, ignore the tag.
-    var decryptedMsg = rot13(cipherText.slice(6));
-    return decryptedMsg;
+  Log("Debug: Decrypt(): key length = " + key.length);
+  Log("Debug: Decrypt(): Group = " + group);
+  Log("Debug: Decrypt(): key = " + key);
+  Log("Debug: Decrypt(): Encrypted string = " + ctext);
+  Log("Debug: Decrypt(): decrypted msg = " + outtext);
 
-  } else {
-    throw "not encrypted";
-  }
+  return outtext;
 }
 
 // Generate a new key for the given group.
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
-    var randomIntArray = GetRandomValues(32);   //256bit key (32 chunks of 8)
-    var key = IntArrayToHexStr(randomIntArray);
+    var randomIntArray = GetRandomValues(8);
+    Log("Debug: GeneratedKey = " + randomIntArray);
+    Log("Debug: GenerateKey length = " + randomIntArray.length);
 
-    keys[group] = key;
+    //var key = IntArrayToHexStr(randomIntArray);
+
+    keys[group] = randomIntArray;
     SaveKeys();
 }
 
@@ -101,13 +121,15 @@ function LoadKeys() {
     keys = {}; // Reset the keys.
 
     var i, k, v;
-    console.log("localStorage.length = " + localStorage.length);
-    
+    Log("Debug: localStorage.length = " + localStorage.length);
+
+if (debug) {
     for (i =0; i<localStorage.length; i++) {
         k = localStorage.key(i);
        v = localStorage.getItem(k);
-        console.log("---" + k + " = " + v);
+        console.log("Debug: ---" + k + " = " + v);
     }
+}
 
     var saved = localStorage.getItem('facebook-keys-' + my_username);
     if (saved) {
@@ -125,7 +147,30 @@ function LoadKeys() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+function Log(msg) {
+  if (debug) {
+    console.log(msg);
+  }
+}
 
+// Converts a string to its ascii equivalent
+function strToInt(plainText) {
+  var len = plainText.length;
+  var intstr = new Array(len);
+
+  var i;
+  for (i=0; i<len; i++) {
+    intstr[i] = plainText.charCodeAt(i);
+  }
+  Log("Debug: Converted intstr = " + intstr);
+  return intstr;
+}
+
+function intToStr(intstr) {
+  var len = intstr.length;
+
+  // todo
+}
 // Get password via prompt, and store in cookie
 // Set fromCookie argument to true to get password from cookie.
 // Set fromCookie argument to false to force UI to request password
@@ -134,14 +179,14 @@ function GetPassword(fromCookie) {
     var password;
     var enc_passwd;
 
-    console.log("Debug: GetPassword()");
+    Log("Debug: GetPassword()");
     
     if(fromCookie == true) {
         enc_passwd = readCookie(kdp);
         password = decryptString(enc_passwd);
     }
 
-    console.log("Debug: UserPassword = " + password);
+    Log("Debug: UserPassword = " + password);
     
     if(fromCookie == false || password == null) {
         password = prompt("Enter key database password", "");
