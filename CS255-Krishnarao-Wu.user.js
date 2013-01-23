@@ -38,31 +38,41 @@ var kdp = "kdp"; // key database password cookie name
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
-  var intstr = strToInt(plainText);
-  var len = intstr.length;
+  var tmpStr = strToInt(plainText);
+  var len = tmpStr.length;
   var i;
   var key = keys[group];
   var cipher = new sjcl.cipher.aes(key);
-  var intext = new Array(4);
+  var asciiStr = new Array(4);
   var ctext;
-  var estring;
+  var encStr;
 
-  // todo: Fix this: Encrypt the first 4 ascii chars (for now).
   for (i=0; i<len; i+=4) {
-    intext[0] = intstr[i];
-    intext[1] = intstr[i+1];
-    intext[2] = intstr[i+2];
-    intext[3] = intstr[i+3];
-    estring = cipher.encrypt(intext);
+    asciiStr[0] = tmpStr[i];
+    asciiStr[1] = tmpStr[i+1];
+    asciiStr[2] = tmpStr[i+2];
+    asciiStr[3] = tmpStr[i+3];
+    encStr = cipher.encrypt(asciiStr);
+    tmpStr[i] = encStr[0];
+    tmpStr[i+1] = encStr[1];
+    tmpStr[i+2] = encStr[2];
+    tmpStr[i+3] = encStr[3];
+    Log("Debug: Encrypt(): asciiStr = " + asciiStr);
+    Log("Debug: Encrypt(): encStr = " + encStr);
+    Log("Debug: Encrypt(): tmpStr = " + tmpStr);
   }
 
+  Log("Debug: Encrypt(): plainText = " + plainText);
   Log("Debug: Encrypt(): key length = " + key.length);
   Log("Debug: Encrypt(): key = " + key);
   Log("Debug: Encrypt(): Group = " + group);
-  Log("Debug: Encrypt(): Encrypted string = " + estring);
-  Log("Debug: Encrypt(): decrypt attempt1 = " + cipher.decrypt(estring));
+  Log("Debug: Encrypt(): Encrypted string = " + tmpStr);
+  // As a check, decrypt the last block
+  var s = cipher.decrypt(encStr);
+  Log("Debug: Encrypt(): decrypt attempt1 = " + s);
+  Log("Debug: Encrypt(): decrypted string = " + asciiToStr(s));
 
-  return estring;
+  return tmpStr;
 
 }
 
@@ -154,23 +164,33 @@ function Log(msg) {
 }
 
 // Converts a string to its ascii equivalent
-function strToInt(plainText) {
-  var len = plainText.length;
-  var intstr = new Array(len);
-
+function strToInt(str) {
+  var len = str.length;
+  var asciiStr = new Array(len);
   var i;
+
   for (i=0; i<len; i++) {
-    intstr[i] = plainText.charCodeAt(i);
+    asciiStr[i] = str.charCodeAt(i);
   }
-  Log("Debug: Converted intstr = " + intstr);
-  return intstr;
+  Log("Debug: strToInt(): Input String = " + str);
+  Log("Debug: strToInt(): Converted asciiStr = " + asciiStr);
+  return asciiStr;
 }
 
-function intToStr(intstr) {
-  var len = intstr.length;
+function asciiToStr(asciiStr) {
+  var len = asciiStr.length;
+  var str = "";
+  var i;
 
-  // todo
+  for (i=0; i<len; i++) {
+    str = str.concat(String.fromCharCode(asciiStr[i]));
+  }
+
+  Log("Debug: intToStr(): Input asciiStr = " + asciiStr);
+  Log("Debug: intToStr(): Converted str = " + str);
+  return str;
 }
+
 // Get password via prompt, and store in cookie
 // Set fromCookie argument to true to get password from cookie.
 // Set fromCookie argument to false to force UI to request password
