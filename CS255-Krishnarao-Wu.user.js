@@ -108,15 +108,12 @@ function GenerateKey(group) {
     Log("Debug: GeneratedKey = " + randomIntArray);
     Log("Debug: GenerateKey length = " + randomIntArray.length);
 
-    //var key = IntArrayToHexStr(randomIntArray);
-
     keys[group] = randomIntArray;
     SaveKeys();
 }
 
 // Take the current group keys, and save them to disk.
 function SaveKeys() {
-  
   var key_str = JSON.stringify(keys);
   var password = GetPassword(true);
 
@@ -129,17 +126,16 @@ function SaveKeys() {
 // Load the group keys from disk.
 function LoadKeys() {
     keys = {}; // Reset the keys.
-
     var i, k, v;
     Log("Debug: localStorage.length = " + localStorage.length);
 
-if (debug) {
-    for (i =0; i<localStorage.length; i++) {
-        k = localStorage.key(i);
-       v = localStorage.getItem(k);
-        console.log("Debug: ---" + k + " = " + v);
+    if (debug) {
+        for (i =0; i<localStorage.length; i++) {
+            k = localStorage.key(i);
+            v = localStorage.getItem(k);
+            console.log("Debug: ---" + k + " = " + v);
+        }
     }
-}
 
     var saved = localStorage.getItem('facebook-keys-' + my_username);
     if (saved) {
@@ -191,27 +187,27 @@ function asciiToStr(asciiStr) {
   return str;
 }
 
-// Get password via prompt, and store in cookie
-// Set fromCookie argument to true to get password from cookie.
-// Set fromCookie argument to false to force UI to request password
-// First time use (unset cookie), user is prompted to enter password
-function GetPassword(fromCookie) {
+// Get password via prompt, and store in session storage
+// Set fromStorage argument to true to get password from sessino storage.
+// Set fromStorage argument to false to force UI to request password
+// First time use (unset storage), user is prompted to enter password
+function GetPassword(fromStorage) {
     var password;
     var enc_passwd;
 
     Log("Debug: GetPassword()");
     
-    if(fromCookie == true) {
-        enc_passwd = readCookie(kdp);
+    if(fromStorage == true) {
+        enc_passwd = sessionStorage.getItem(kdp);
         password = decryptString(enc_passwd);
     }
 
     Log("Debug: UserPassword = " + password);
     
-    if(fromCookie == false || password == null) {
+    if(fromStorage == false || password == null) {
         password = prompt("Enter key database password", "");
         enc_passwd = encryptString(password);
-        createSessionCookie(kdp, enc_passwd);
+        sessionStorage.setItem(kdp, enc_passwd);
     }
 
     return password;
