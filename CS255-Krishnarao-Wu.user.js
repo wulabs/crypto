@@ -38,37 +38,25 @@ var kdp = "kdp" // Key database password string
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
-  var i;
-  var asciiStr = new Array(4);
-  var encStr;
-  var tmpStr = strToAscii(plainText);
-  var len = tmpStr.length;
-  var key = keys[group];
-  var cipher = new sjcl.cipher.aes(key);
+      var xorBlock = new Array();
+      xorBlock = [4, 2, 3, 4]; // THIS NEEDS TO BE RANDOMIZED
+      var encStr;
+      var tmpStr = strToAscii(plainText);
+      var len = tmpStr.length;
+      var key = keys[group];
+      var cipher = new sjcl.cipher.aes(key);
+      var cipherText = new Array();
+      cipherText = cipherText.concat(xorBlock);
 
-  Log("Debug: Encrypt(): group = " + group + " key = " + key);
-
-/*
-  for (i=0; i<len; i+=4) {
-    asciiStr[0] = tmpStr[i];
-    asciiStr[1] = tmpStr[i+1];
-    asciiStr[2] = tmpStr[i+2];
-    asciiStr[3] = tmpStr[i+3];
-    encStr = cipher.encrypt(asciiStr);
-    tmpStr[i] = encStr[0];
-    tmpStr[i+1] = encStr[1];
-    tmpStr[i+2] = encStr[2];
-    tmpStr[i+3] = encStr[3];
-
-    Log("Debug: Encrypt(): asciiStr = " + asciiStr);
-    Log("Debug: Encrypt(): encStr = " + encStr);
-    Log("Debug: Encrypt(): tmpStr = " + tmpStr);
-  }
-*/
-  Log("Debug: Encrypt(): ascii text = " + tmpStr);
-  encStr = cipher.encrypt(tmpStr);
-  Log("Debug: Encrypt(): encstr = " + encStr);
-  return sjcl.codec.base64.fromBits(encStr);
+      Log("Debug: Encrypt(): group = " + group + " key = " + key);
+      while (tmpStr.length > 0) {
+          var plainBlock = tmpStr.splice(0, 4);
+          var cipherBlock = XorArr(plainBlock, xorBlock);
+          cipherBlock = cipher.encrypt(cipherBlock);
+          cipherText = cipherText.concat(cipherBlock);
+          xorBlock = cipherBlock;
+      }
+      return sjcl.codec.base64.fromBits(cipherText);
 }
 
 // Return the decryption of the message for the given group, in the form of a string.
@@ -78,13 +66,23 @@ function Encrypt(plainText, group) {
 // @param {String} group Group name.
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
-  Log("Debug: Derypt(): cipherText = " + cipherText);
-  var cText = sjcl.codec.base64.toBits(cipherText);
-  Log("Debug: Decrypt(): cText = " + cText);
-  var key = keys[group];
-  var cipher = new sjcl.cipher.aes(key);
-  var asciiStr = cipher.decrypt(cText);
-  return asciiToStr(asciiStr);
+      Log("Debug: Derypt(): cipherText = " + cipherText);
+      var cText = sjcl.codec.base64.toBits(cipherText);
+      Log("Debug: Decrypt(): cText = " + cText);
+      var key = keys[group];
+      var cipher = new sjcl.cipher.aes(key);
+      var xorBlock = cText.splice(0, 4);
+      var asciiStr = new Array();
+
+      while (cText.length > 0) {
+          var cipherBlock = cText.splice(0, 4);
+          var asciiStrBlock = cipher.decrypt(cipherBlock);
+          asciiStrBlock = XorArr(asciiStrBlock, xorBlock);
+          asciiStr = asciiStr.concat(asciiStrBlock);
+          xorBlock = cipherBlock;
+      }
+
+      return asciiToStr(asciiStr);
 }
 
 function Encrypt_x(plainText, group) {
@@ -142,6 +140,21 @@ function LoadKeys() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+
+//Xors two arrays
+//Must be same length
+function XorArr(arr1, arr2)
+{
+    var res = new Array();
+
+    for(var i = 0; i < arr1.length; ++i) {
+        var xored = arr1[i] ^ arr2[i];
+        res.push(xored);
+    }
+
+    return res;
+}
+
 function Log(msg) {
   if (debug) {
     console.log(msg);
