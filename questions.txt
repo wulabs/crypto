@@ -15,6 +15,9 @@
  
 4. If all messages posted in the group are encrypted using the same
     key from the group->key table, isnt this similar to an OTP (multi-time-pad)
+    [Wu]: Done.
 
 
 5. We get a cryptic decryption error "getting length of unknown", if we have no key for the specified group defined.
+[Madhu]: Fixed. Checking if keys[group] exists in Encrypt and Decrypt. If it
+doesnt, we return what we got.
