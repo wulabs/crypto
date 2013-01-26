@@ -43,6 +43,10 @@ function Encrypt(plainText, group) {
       var encStr;
       var tmpStr = strToAscii(plainText);
       var len = tmpStr.length;
+      if (typeof keys[group] === 'undefined') {
+          Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
+          return plainText;
+      }
       var key = keys[group];
       var cipher = new sjcl.cipher.aes(key);
       var cipherText = new Array();
@@ -69,6 +73,10 @@ function Decrypt(cipherText, group) {
       Log("Debug: Derypt(): cipherText = " + cipherText);
       var cText = sjcl.codec.base64.toBits(cipherText);
       Log("Debug: Decrypt(): cText = " + cText);
+      if (typeof keys[group] === 'undefined') {
+          Log("Debug: Decrypt(): Key for group not found. No decryption for you.");
+          return cipherText;
+      }
       var key = keys[group];
       var cipher = new sjcl.cipher.aes(key);
       var xorBlock = cText.splice(0, 4);
