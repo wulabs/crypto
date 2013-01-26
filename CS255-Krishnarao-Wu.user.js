@@ -38,8 +38,26 @@ var kdp = "kdp" // Key database password string
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
+    if (plainText.length < 1) {
+      // blank
+      alert("Try entering a message (the button works only once)");
+      return plainText;
+    }
+      var mod = plainText.length % 4;
+      if (mod != 0) {
+        var pad = 4 - mod;
+        Log("Debug: Encrypt(): pad = " + pad);
+        if (pad == 1) {
+          plainText = plainText.concat("1");
+        } else if (pad == 2) {
+          plainText = plainText.concat("22");
+        } else if (pad == 3) {
+          plainText = plainText.concat("333");
+        }
+        Log("Degut: Encrypt(): After padding = " + plainText);
+      }
       var xorBlock = new Array();
-      xorBlock = [4, 2, 3, 4]; // THIS NEEDS TO BE RANDOMIZED
+      xorBlock = GetRandomValues(4);
       var encStr;
       var tmpStr = strToAscii(plainText);
       var len = tmpStr.length;
@@ -48,11 +66,10 @@ function Encrypt(plainText, group) {
           return plainText;
       }
       var key = keys[group];
+      Log("Debug: Encrypt(): group = " + group + " key = " + key);
       var cipher = new sjcl.cipher.aes(key);
       var cipherText = new Array();
       cipherText = cipherText.concat(xorBlock);
-
-      Log("Debug: Encrypt(): group = " + group + " key = " + key);
       while (tmpStr.length > 0) {
           var plainBlock = tmpStr.splice(0, 4);
           var cipherBlock = XorArr(plainBlock, xorBlock);
@@ -89,8 +106,18 @@ function Decrypt(cipherText, group) {
           asciiStr = asciiStr.concat(asciiStrBlock);
           xorBlock = cipherBlock;
       }
-
-      return asciiToStr(asciiStr);
+      var str = asciiToStr(asciiStr);
+      Log("Debug: Decrypt(): len-1 = " + str.substr(str.length-1));
+      Log("Debug: Decrypt(): len-2 = " + str.substr(str.length-2));
+      Log("Debug: Decrypt(): len-3 = " + str.substr(str.length-3));
+      if (str.substr(str.length-1) == "1") {
+        str = str.slice(0,-1);
+      } else if (str.substr(str.length-2) == "22") {
+        str = str.slice(0,-2);
+      } else if (str.substr(str.length-3) == "333" ) {
+        str = str.slice(0,-3);
+      }
+      return str;
 }
 
 function Encrypt_x(plainText, group) {
@@ -1320,8 +1347,16 @@ sjcl.codec.base64 = {
     if (_url) c = c.substr(0,62) + '-_';
     for (i=0; i<str.length; i++) {
       x = c.indexOf(str.charAt(i));
+      if (! (0 <= str.charCodeAt(i) && str.charCodeAt(i) <=127)) {
+        Log("Debug: toBits(): char ascii = " + str.charCodeAt(i));
+        continue;
+      }
       if (x < 0) {
-        throw new sjcl.exception.invalid("this isn't base64!");
+        if (debug) {
+          throw new sjcl.exception.invalid("Debug: str.length = " + str.length + " Char = @@" + str.charAt(i) + "@@ i = " + i);
+        } else {
+          throw new sjcl.exception.invalid("this isn't base64!");
+        }
       }
       if (bits > 26) {
         bits -= 26;
