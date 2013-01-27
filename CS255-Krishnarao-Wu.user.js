@@ -66,6 +66,7 @@ function Encrypt(plainText, group) {
           throw new sjcl.exception.invalid("Key not found");
       }
       var key = keys[group];
+      key = sjcl.codec.base64.toBits(key);
       Log("Debug: Encrypt(): group = " + group + " key = " + key);
       var cipher = new sjcl.cipher.aes(key);
       var cipherText = new Array();
@@ -95,6 +96,8 @@ function Decrypt(cipherText, group) {
           throw new sjcl.exception.invalid("Key not found");
       }
       var key = keys[group];
+      Log("Debug: Decrypt(): group = " + group + " key = " + key);
+      key = sjcl.codec.base64.toBits(key);
       var cipher = new sjcl.cipher.aes(key);
       var xorBlock = cText.splice(0, 4);
       var asciiStr = new Array();
@@ -145,7 +148,7 @@ function GenerateKey(group) {
   var password = GetPassword(true);
   var salt = GetRandomValues(4);
   var key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-
+  key = sjcl.codec.base64.fromBits(key);
   keys[group] = key;
   SaveKeys();
 }
