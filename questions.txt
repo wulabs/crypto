@@ -1,6 +1,8 @@
 1. We currently use createSessionCookie() and readcookie(). Should we also
    use eraseCookie()? If so, when? Do we write a UI for it? What happens
    if a user forgets the password? 
+[Madhu]: Handout FAQ state that user will never change the key database password
+once it is set.
 
 
 2. There are 2 custom functions encryptString and decryptString. These 
@@ -21,3 +23,4 @@
 5. We get a cryptic decryption error "getting length of unknown", if we have no key for the specified group defined.
 [Madhu]: Fixed. Checking if keys[group] exists in Encrypt and Decrypt. If it
 doesnt, we return what we got.
+
