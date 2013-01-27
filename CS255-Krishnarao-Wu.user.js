@@ -28,7 +28,6 @@ var debug = 1;
 var my_username; // user signed in as
 var keys = {}; // association map of keys: group -> key
 var kdp = "kdp" // Key database password string
-var salt = {};
 
 // Some initialization functions are called at the very end of this script.
 // You only have to edit the top portion.
@@ -64,8 +63,7 @@ function Encrypt(plainText, group) {
       var len = tmpStr.length;
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
-          throw new sjcl.exception.invalid("No keys to encrypt!");
-          returnx ;
+          return plainText;
       }
       var key = keys[group];
       Log("Debug: Encrypt(): group = " + group + " key = " + key);
@@ -94,11 +92,9 @@ function Decrypt(cipherText, group) {
       Log("Debug: Decrypt(): cText = " + cText);
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Decrypt(): Key for group not found. No decryption for you.");
-          throw new sjcl.exception.invalid("No keys to decrypt!");
-          return;
+          return cipherText;
       }
       var key = keys[group];
-      Log("Debug: Decrypt(): group = " + group + " key = " + key);
       var cipher = new sjcl.cipher.aes(key);
       var xorBlock = cText.splice(0, 4);
       var asciiStr = new Array();
@@ -147,12 +143,11 @@ function GenerateKey(group) {
   // CS255-todo: Well this needs some work...
   
   var password = GetPassword(true);
-  salt = GetRandomValues(4);
+  var salt = GetRandomValues(4);
   var key = sjcl.misc.pbkdf2(password, salt, 3, 256);
 
   keys[group] = key;
   SaveKeys();
-  SaveSalt();
 }
 
 // Take the current group keys, and save them to disk.
@@ -164,7 +159,6 @@ function SaveKeys() {
 
 // Load the group keys from disk.
 function LoadKeys() {
-  LoadSalt();
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
@@ -181,22 +175,6 @@ function LoadKeys() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
-
-function SaveSalt() {
-  var salt_str = JSON.stringify(salt);
-  // todo: plaintext salt going to disk?
-  localStorage.setItem('facebook-salt-' + my_username, encodeURIComponent(key_str));
-}
-
-function LoadSalt() {
-  salt = {};
-  var saved = localStorage.getItem('facebook-salt-' + my_username);
-  if (saved) {
-    var salt_str = decodeURIComponent(saved);
-    // todo: plaintext salt were on disk?
-    salt = JSON.parse(salt_str);
-  }
-}
 
 //Xors two arrays
 //Must be same length
