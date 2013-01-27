@@ -63,7 +63,7 @@ function Encrypt(plainText, group) {
       var len = tmpStr.length;
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
-          return plainText;
+          throw new sjcl.exception.invalid("Key not found");
       }
       var key = keys[group];
       Log("Debug: Encrypt(): group = " + group + " key = " + key);
@@ -92,7 +92,7 @@ function Decrypt(cipherText, group) {
       Log("Debug: Decrypt(): cText = " + cText);
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Decrypt(): Key for group not found. No decryption for you.");
-          return cipherText;
+          throw new sjcl.exception.invalid("Key not found");
       }
       var key = keys[group];
       var cipher = new sjcl.cipher.aes(key);
