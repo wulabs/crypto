@@ -155,9 +155,22 @@ function GenerateKey(group) {
 
 // Take the current group keys, and save them to disk.
 function SaveKeys() {
-  // CS255-todo: plaintext keys going to disk?
   var key_str = JSON.stringify(keys);
-  localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
+  Log("Debug: SaveKeys(): key_str = " + key_str);
+  Log("Debug: SaveKeys(): typeof key_str = " + typeof key_str);
+  Log("Debug: SaveKeys(): len = " + key_str.length);
+  var password = GetPassword(true);
+  Log("Debug: SaveKeys(): password = " + password);
+  var salt = GetRandomValues(4);
+  Log("Debug: SaveKeys(): salt = " + salt);
+  var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
+  Log("Debug: SaveKeys(): table_key = " + table_key);
+  Log("Debug: SaveKeys(): typeof table_key = " + typeof table_key);
+  var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str);
+  Log("Debug: SaveKeys(): enc_key_str = " + enc_key_str);
+  Log("Debug: SaveKeys(): typeof enc_key_str = " + typeof enc_key_str);
+  localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
+  saveSalt(salt);
 }
 
 // Load the group keys from disk.
@@ -165,8 +178,17 @@ function LoadKeys() {
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
-    var key_str = decodeURIComponent(saved);
-    // CS255-todo: plaintext keys were on disk?
+    var enc_key_str = decodeURIComponent(saved);
+    Log("Debug: LoadKeys(): enc_key_str = " + enc_key_str);
+    var password = GetPassword(true);
+    Log("Debug: LoadKeys(): password = " + password);
+    var salt = getSalt();
+    Log("Debug: LoadKeys(): salt = " + salt);
+    var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
+    Log("Debug: LoadKeys(): table_key = " + table_key);
+    Log("Debug: LoadKeys(): typeof table_key = " + typeof table_key);
+    var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
+    Log("Debug: LoadKeys(): key_str = " + key_str);
     keys = JSON.parse(key_str);
   }
 }
@@ -178,6 +200,101 @@ function LoadKeys() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+
+// Encrypt a plain text message using a key
+//
+// @param (String) key Key used to encrypt
+// @param (String) msg Message to encrypt
+// @return (String) Encryption of msg, encoded as a string.
+// does not check for null msg
+function aesEncrypt(key, msg) {
+  var mod = msg.length % 4;
+  if (mod != 0) {
+    var pad = 4 - mod;
+    if (pad == 1) {
+      msg = msg.concat("1");
+    } else if (pad == 2) {
+      msg = msg.concat("22");
+    } else if (pad == 3) {
+      msg = msg.concat("333");
+    }
+  }
+  var xorBlock = new Array();
+  xorBlock = GetRandomValues(4);
+  var encStr;
+  var tmpStr = strToAscii(msg);
+  var len = tmpStr.length;
+  key = sjcl.codec.base64.toBits(key);
+  var cipher = new sjcl.cipher.aes(key);
+  var cipherText = new Array();
+  cipherText = cipherText.concat(xorBlock);
+  while (tmpStr.length > 0) {
+    var plainBlock = tmpStr.splice(0, 4);
+    var cipherBlock = XorArr(plainBlock, xorBlock);
+    cipherBlock = cipher.encrypt(cipherBlock);
+    cipherText = cipherText.concat(cipherBlock);
+    xorBlock = cipherBlock;
+  }
+  return sjcl.codec.base64.fromBits(cipherText); // Return the string equivalent
+}
+
+// Decrypt cipher text using key
+//
+// @param (String) key Key used to decrypt
+// @param (String) ctext The cipher text message to decrypt
+// @return (String) Decrypted string, encoded as a string.
+function aesDecrypt(key, ctext) {
+  var cText = sjcl.codec.base64.toBits(ctext);
+  key = sjcl.codec.base64.toBits(key);
+  var cipher = new sjcl.cipher.aes(key);
+  var xorBlock = cText.splice(0,4);
+  var asciiStr = new Array();
+  while (cText.length > 0) {
+    var cipherBlock = cText.splice(0,4);
+    var asciiStrBlock = cipher.decrypt(cipherBlock);
+    asciiStrBlock = XorArr(asciiStrBlock, xorBlock);
+    asciiStr = asciiStr.concat(asciiStrBlock);
+    xorBlock = cipherBlock;
+  }
+  var str = asciiToStr(asciiStr);
+  if (str.substr(str.length-1) == "1") {
+    str = str.slice(0,-1);
+  } else if (str.substr(str.length-2) == "22") {
+    str = str.slice(0,-2);
+  } else if (str.substr(str.length-3) == "333" ) {
+    str = str.slice(0,-3);
+  }
+  return str;
+}
+
+// Save the salt in local storage
+//
+// @param (object) salt The salt to save
+// @returns None
+function saveSalt(salt) {
+  var salt_str = JSON.stringify(salt);
+  // todo: saving in plaintext?
+  Log("Debug: saveSalt(): salt_str = " + salt_str);
+  localStorage.setItem('facebook-salt-' + my_username, encodeURIComponent(salt_str));
+}
+
+// Retrive the salt from local storage
+//
+// @param None
+// @return (Object) The salt. null on error.
+function getSalt() {
+  var salt_str, salt;
+  var saved = localStorage.getItem('facebook-salt-' + my_username);
+  if (saved) {
+    salt_str = decodeURIComponent(saved);
+    Log("Debug: getSalt(): salt_str = " + salt_str);
+    salt = JSON.parse(salt_str);
+    Log("Debug: getSalt(): salt = " + salt);
+    return salt;
+  }
+  Log("Debug: getSalt(): Salt not found");
+  return "";
+}
 
 //Xors two arrays
 //Must be same length
@@ -200,6 +317,9 @@ function Log(msg) {
 }
 
 // Converts a string to its ascii equivalent
+//
+//@param (String) str The string to convert
+//@return The ascii equivalent of the input string
 function strToAscii(str) {
   var len = str.length;
   var asciiStr = new Array(len);
@@ -213,6 +333,10 @@ function strToAscii(str) {
   return asciiStr;
 }
 
+// Converts an ascii string to character array
+//
+// @param (String) The ascii string
+// @return (String) The character array
 function asciiToStr(asciiStr) {
   var len = asciiStr.length;
   var str = "";
@@ -231,12 +355,15 @@ function asciiToStr(asciiStr) {
 // Set fromCookie argument to true to get password from cookie.
 // Set fromCookie argument to false to force UI to request password
 // First time use (unset cookie), user is prompted to enter password
+// Get the user password used to encrypt/decrypt key table
+//
+// @param (Bool) True: Get password from session Storage
+//               False: Get password via user prompt
+// @return (String) The password
 function GetPassword(fromSessionStorage) {
     var password;
     var enc_passwd;
 
-    Log("Debug: GetPassword()");
-    
     if(fromSessionStorage == true) {
         enc_passwd = sessionStorage.getItem(kdp);
         password = decryptString(enc_passwd);
@@ -249,8 +376,7 @@ function GetPassword(fromSessionStorage) {
         enc_passwd = encryptString(password);
         sessionStorage.setItem(kdp, enc_passwd);
     }
-
-    return enc_passwd;
+    return password;
 }
 
 function encryptString(str) {
