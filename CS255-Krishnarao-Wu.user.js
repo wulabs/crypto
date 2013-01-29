@@ -38,36 +38,19 @@ var kdp = "kdp" // Key database password string
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
-    if (plainText.length < 1) {
-      // blank
-      alert("Try entering a message (the button works only once)");
-      return plainText;
-    }
-
-      var xorBlock = new Array();
-      xorBlock = GetRandomValues(4);
-      var asciiStr = strToAscii(plainText);
-      var paddedAsciiStr = padAscii(asciiStr);
-
+      if (plainText.length < 1) {
+        // blank
+        alert("Try entering a message (the button works only once)");
+        return plainText;
+      }
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
-          throw new sjcl.exception.invalid("Key not found");
+          throw new sjcl.exception.invalid("No key to encrypt");
       }
       var key = keys[group];
-      key = sjcl.codec.base64.toBits(key);
-      Log("Debug: Encrypt(): group = " + group + " key = " + key);
-      var cipher = new sjcl.cipher.aes(key);
-      var cipherText = new Array();
-      cipherText = cipherText.concat(xorBlock);
-
-      while (paddedAsciiStr.length > 0) {
-          var plainBlock = paddedAsciiStr.splice(0, 4);
-          var cipherBlock = XorArr(plainBlock, xorBlock);
-          cipherBlock = cipher.encrypt(cipherBlock);
-          cipherText = cipherText.concat(cipherBlock);
-          xorBlock = cipherBlock;
-      }
-      return sjcl.codec.base64.fromBits(cipherText);
+      var cipherText = aesEncrypt(key, plainText);
+      Log("Debug: Encrypt() after aesEncrypt(): enc = " + cipherText);
+      return cipherText;
 }
 
 // Return the decryption of the message for the given group, in the form of a string.
@@ -78,29 +61,13 @@ function Encrypt(plainText, group) {
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
       Log("Debug: Derypt(): cipherText = " + cipherText);
-      var cText = sjcl.codec.base64.toBits(cipherText);
-      Log("Debug: Decrypt(): cText = " + cText);
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Decrypt(): Key for group not found. No decryption for you.");
-          throw new sjcl.exception.invalid("Key not found");
+          throw new sjcl.exception.invalid("No key to decrypt");
       }
       var key = keys[group];
       Log("Debug: Decrypt(): group = " + group + " key = " + key);
-      key = sjcl.codec.base64.toBits(key);
-      var cipher = new sjcl.cipher.aes(key);
-      var xorBlock = cText.splice(0, 4);
-      var asciiStr = new Array();
-
-      while (cText.length > 0) {
-          var cipherBlock = cText.splice(0, 4);
-          var asciiStrBlock = cipher.decrypt(cipherBlock);
-          asciiStrBlock = XorArr(asciiStrBlock, xorBlock);
-          asciiStr = asciiStr.concat(asciiStrBlock);
-          xorBlock = cipherBlock;
-      }
-      var unpaddedAsciiStr = unpadAscii(asciiStr);
-      var plainText = asciiToStr(unpaddedAsciiStr);
-
+      var plainText = aesDecrypt(key, cipherText);
       return plainText;
 }
 
