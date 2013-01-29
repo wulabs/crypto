@@ -43,24 +43,12 @@ function Encrypt(plainText, group) {
       alert("Try entering a message (the button works only once)");
       return plainText;
     }
-      var mod = plainText.length % 4;
-      if (mod != 0) {
-        var pad = 4 - mod;
-        Log("Debug: Encrypt(): pad = " + pad);
-        if (pad == 1) {
-          plainText = plainText.concat("1");
-        } else if (pad == 2) {
-          plainText = plainText.concat("22");
-        } else if (pad == 3) {
-          plainText = plainText.concat("333");
-        }
-        Log("Degut: Encrypt(): After padding = " + plainText);
-      }
+
       var xorBlock = new Array();
       xorBlock = GetRandomValues(4);
-      var encStr;
-      var tmpStr = strToAscii(plainText);
-      var len = tmpStr.length;
+      var asciiStr = strToAscii(plainText);
+      var paddedAsciiStr = padAscii(asciiStr);
+
       if (typeof keys[group] === 'undefined') {
           Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
           throw new sjcl.exception.invalid("Key not found");
@@ -71,8 +59,9 @@ function Encrypt(plainText, group) {
       var cipher = new sjcl.cipher.aes(key);
       var cipherText = new Array();
       cipherText = cipherText.concat(xorBlock);
-      while (tmpStr.length > 0) {
-          var plainBlock = tmpStr.splice(0, 4);
+
+      while (paddedAsciiStr.length > 0) {
+          var plainBlock = paddedAsciiStr.splice(0, 4);
           var cipherBlock = XorArr(plainBlock, xorBlock);
           cipherBlock = cipher.encrypt(cipherBlock);
           cipherText = cipherText.concat(cipherBlock);
@@ -109,18 +98,10 @@ function Decrypt(cipherText, group) {
           asciiStr = asciiStr.concat(asciiStrBlock);
           xorBlock = cipherBlock;
       }
-      var str = asciiToStr(asciiStr);
-      Log("Debug: Decrypt(): len-1 = " + str.substr(str.length-1));
-      Log("Debug: Decrypt(): len-2 = " + str.substr(str.length-2));
-      Log("Debug: Decrypt(): len-3 = " + str.substr(str.length-3));
-      if (str.substr(str.length-1) == "1") {
-        str = str.slice(0,-1);
-      } else if (str.substr(str.length-2) == "22") {
-        str = str.slice(0,-2);
-      } else if (str.substr(str.length-3) == "333" ) {
-        str = str.slice(0,-3);
-      }
-      return str;
+      var unpaddedAsciiStr = unpadAscii(asciiStr);
+      var plainText = asciiToStr(unpaddedAsciiStr);
+
+      return plainText;
 }
 
 function Encrypt_x(plainText, group) {
@@ -208,34 +189,24 @@ function LoadKeys() {
 // @return (String) Encryption of msg, encoded as a string.
 // does not check for null msg
 function aesEncrypt(key, msg) {
-  var mod = msg.length % 4;
-  if (mod != 0) {
-    var pad = 4 - mod;
-    if (pad == 1) {
-      msg = msg.concat("1");
-    } else if (pad == 2) {
-      msg = msg.concat("22");
-    } else if (pad == 3) {
-      msg = msg.concat("333");
+    var xorBlock = new Array();
+    xorBlock = GetRandomValues(4);
+    var asciiStr = strToAscii(msg);
+    var paddedAsciiStr = padAscii(asciiStr);
+
+    key = sjcl.codec.base64.toBits(key);
+    var cipher = new sjcl.cipher.aes(key);
+    var cipherText = new Array();
+    cipherText = cipherText.concat(xorBlock);
+
+    while (paddedAsciiStr.length > 0) {
+        var plainBlock = paddedAsciiStr.splice(0, 4);
+        var cipherBlock = XorArr(plainBlock, xorBlock);
+        cipherBlock = cipher.encrypt(cipherBlock);
+        cipherText = cipherText.concat(cipherBlock);
+        xorBlock = cipherBlock;
     }
-  }
-  var xorBlock = new Array();
-  xorBlock = GetRandomValues(4);
-  var encStr;
-  var tmpStr = strToAscii(msg);
-  var len = tmpStr.length;
-  key = sjcl.codec.base64.toBits(key);
-  var cipher = new sjcl.cipher.aes(key);
-  var cipherText = new Array();
-  cipherText = cipherText.concat(xorBlock);
-  while (tmpStr.length > 0) {
-    var plainBlock = tmpStr.splice(0, 4);
-    var cipherBlock = XorArr(plainBlock, xorBlock);
-    cipherBlock = cipher.encrypt(cipherBlock);
-    cipherText = cipherText.concat(cipherBlock);
-    xorBlock = cipherBlock;
-  }
-  return sjcl.codec.base64.fromBits(cipherText); // Return the string equivalent
+    return sjcl.codec.base64.fromBits(cipherText); // Return the string equivalent
 }
 
 // Decrypt cipher text using key
@@ -244,27 +215,23 @@ function aesEncrypt(key, msg) {
 // @param (String) ctext The cipher text message to decrypt
 // @return (String) Decrypted string, encoded as a string.
 function aesDecrypt(key, ctext) {
-  var cText = sjcl.codec.base64.toBits(ctext);
-  key = sjcl.codec.base64.toBits(key);
-  var cipher = new sjcl.cipher.aes(key);
-  var xorBlock = cText.splice(0,4);
-  var asciiStr = new Array();
-  while (cText.length > 0) {
-    var cipherBlock = cText.splice(0,4);
-    var asciiStrBlock = cipher.decrypt(cipherBlock);
-    asciiStrBlock = XorArr(asciiStrBlock, xorBlock);
-    asciiStr = asciiStr.concat(asciiStrBlock);
-    xorBlock = cipherBlock;
-  }
-  var str = asciiToStr(asciiStr);
-  if (str.substr(str.length-1) == "1") {
-    str = str.slice(0,-1);
-  } else if (str.substr(str.length-2) == "22") {
-    str = str.slice(0,-2);
-  } else if (str.substr(str.length-3) == "333" ) {
-    str = str.slice(0,-3);
-  }
-  return str;
+    var cText = sjcl.codec.base64.toBits(ctext);
+    key = sjcl.codec.base64.toBits(key);
+    var cipher = new sjcl.cipher.aes(key);
+    var xorBlock = cText.splice(0,4);
+    var asciiStr = new Array();
+
+    while (cText.length > 0) {
+        var cipherBlock = cText.splice(0,4);
+        var asciiStrBlock = cipher.decrypt(cipherBlock);
+        asciiStrBlock = XorArr(asciiStrBlock, xorBlock);
+        asciiStr = asciiStr.concat(asciiStrBlock);
+        xorBlock = cipherBlock;
+    }
+    var unpaddedAsciiStr = unpadAscii(asciiStr);
+    var plainText = asciiToStr(unpaddedAsciiStr);
+
+    return plainText;
 }
 
 // Save the salt in local storage
@@ -314,6 +281,42 @@ function Log(msg) {
   if (debug) {
     console.log(msg);
   }
+}
+
+function padAscii(byteArray) {
+    var padLength = 16 - (byteArray.length % 16);
+    for (var i = 0; i < padLength; ++i) {
+        byteArray.push(padLength);
+    }
+
+    var intArray = new Array();
+    for (var i = 0; i < byteArray.length / 4; ++i) {
+        var newInt = 0;
+        for (var j = 0; j < 4; ++j) {
+            newInt += byteArray[i * 4 + j] * (1 << (8 * (3 - j)));
+        }
+        intArray.push(newInt);
+    }
+
+    return intArray;
+}
+
+function unpadAscii(intArray) {
+    var byteArray = new Array();
+    for (var i = 0; i < intArray.length; ++i) {
+        for (var j = 0; j < 4; ++j) {
+            byteArray.push(intArray[i] >> (8 * (3 - j)) & 0xFF);
+        }
+    }
+
+    var padLen = byteArray.pop();
+    for (var i = 0; i < padLen - 1; ++i) {
+        var pad = byteArray.pop();
+        if (pad != padLen)
+            return false;
+    }
+
+    return byteArray;
 }
 
 // Converts a string to its ascii equivalent
