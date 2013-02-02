@@ -3,17 +3,24 @@ Jack Wu
 
 Password management:
 ====================
-  - A prompt for the user password appears the first time user logs into the
-    account.
-  - If the Group->Keys table is empty, then user is free to choose any 
-    password.
-  - If Group->Keys table already has entries, then the user is expected to 
-    enter the password used when creating the keys.
-  - In case a wrong password is entered, then the Group->Keys table does not
-    decrypt and is not displayed in the UI. At this time, you can retry with
-    the right password by restarting the session.
-  - Passwords can have a maximum length of 32 characters. Longer passwords
-    will be truncated to 32 characters.
+When the user first logs in, the password behavior depends on whether there
+are entries in the Group->Key table.
+
+  Case (1): Group->Key table is empty
+    - User is free to access the group page and other facebook book pages.
+    - Messages cannot be encrypted or decrypted. If encryption is tried, an
+      Alert() is provided to notifiy the user that encryption key is missing.
+      If decryption is tried, an invalid exception is thrown and a suitable
+      message is provided to the user.
+    - Password is set when the user generates a new Key for a Group the
+      very first time.
+
+  Case (2): Group->Key table is not empty
+    - Any time the user tries to access a page where the script is loaded, a
+      prompt for the password appears.
+    - The user is expected to enter the right password to decrypt the table.
+    - In case of a wrong password, an alert() is provided and the prompt
+      appears again.
 
 
 Milestone 1:
