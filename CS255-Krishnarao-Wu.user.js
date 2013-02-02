@@ -24,10 +24,10 @@
 // See http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 "use strict";
 
-var debug = 1;
+var debug = 0;   // Set to 1 to turn on debug statements
 var my_username; // user signed in as
-var keys = {}; // association map of keys: group -> key
-var kdp = "kdp" // Key database password string
+var keys = {};   // association map of keys: group -> key
+var kdp = "kdp"  // Key database password string
 
 // Some initialization functions are called at the very end of this script.
 // You only have to edit the top portion.
@@ -113,16 +113,26 @@ function SaveKeys() {
 // is derived using user password and the saved salt.
 function LoadKeys() {
   keys = {}; // Reset the keys.
+  var continueLoop = 1;
+  var flag = true;
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
     var enc_key_str = decodeURIComponent(saved);
     Log("LoadKeys(): enc_key_str = " + enc_key_str);
-    var password = GetPassword(true);
-    var salt = getSalt();
-    var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-    var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
-    Log("LoadKeys(): key_str = " + key_str);
-    keys = JSON.parse(key_str);
+    while (continueLoop) {
+      var password = GetPassword(flag);
+      var salt = getSalt();
+      var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
+      var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
+      Log("LoadKeys(): key_str = @@@" + key_str + "@@@");
+      if (!key_str || 0 === key_str.length) {
+        flag = false;
+        alert("Invalid Password. Click OK to try again.");
+      } else {
+        keys = JSON.parse(key_str);
+        continueLoop = 0;
+      }
+    }
   }
 }
 
