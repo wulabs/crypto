@@ -44,12 +44,13 @@ function Encrypt(plainText, group) {
         return plainText;
       }
       if (typeof keys[group] === 'undefined') {
-          Log("Debug: Encrypt(): Key for group not found. No encryption for you.");
-          throw new sjcl.exception.invalid("No key to encrypt");
+          Log("Encrypt(): Key for group not found. No encryption for you.");
+          alert("No key to encrypt! Check Account Settings.");
+          return plainText;
       }
       var key = keys[group];
+      Log("Encrypt(): group = " + group + " key = " + key);
       var cipherText = aesEncrypt(key, plainText);
-      Log("Debug: Encrypt() after aesEncrypt(): enc = " + cipherText);
       return cipherText;
 }
 
@@ -60,83 +61,67 @@ function Encrypt(plainText, group) {
 // @param {String} group Group name.
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
-      Log("Debug: Derypt(): cipherText = " + cipherText);
       if (typeof keys[group] === 'undefined') {
-          Log("Debug: Decrypt(): Key for group not found. No decryption for you.");
-          throw new sjcl.exception.invalid("No key to decrypt");
+          Log("Decrypt(): Key for group not found. No decryption for you.");
+          throw new sjcl.exception.invalid("No key to decrypt! Check Account Settings.");
       }
       var key = keys[group];
-      Log("Debug: Decrypt(): group = " + group + " key = " + key);
+      Log("Decrypt(): group = " + group + " key = " + key);
       var plainText = aesDecrypt(key, cipherText);
       return plainText;
 }
 
-function Encrypt_x(plainText, group) {
-  var dumbstr = new Array(4);
-  dumbstr[0] = 65; dumbstr[1] = 66; dumbstr[2] = 67; dumbstr[3] = 68;
-  var key = new Array(8); // all 0 key
-  var cipher = new sjcl.cipher.aes(key);
-  return sjcl.codec.base64.fromBits(cipher.encrypt(dumbstr));
-}
-
-function Decrypt_x(cipherText, group) {
-  Log("Debug: Derypt(): cipherText = " + cipherText);
-  var key = new Array(8);
-  var cipher = new sjcl.cipher.aes(key);
-  return cipher.decrypt(sjcl.codec.base64.toBits(cipherText));
-}
-
 // Generate a new key for the given group.
+//
+// A 256 bit key is generated for encryption of each of the messages
+// posted in that group. The key is derived using the user password
+// and a random salt. The key is base64 encoded.
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
-
-  // CS255-todo: Well this needs some work...
-  
   var password = GetPassword(true);
   var salt = GetRandomValues(4);
   var key = sjcl.misc.pbkdf2(password, salt, 3, 256);
   key = sjcl.codec.base64.fromBits(key);
+  Log("GenerateKey(): Generated key: " + key + " for Group: " + group);
   keys[group] = key;
   SaveKeys();
 }
 
 // Take the current group keys, and save them to disk.
+//
+// The key table is first encrypted using a 256 bit key and
+// then stored on LocalStorage. The key for encryption is derived
+// using the user password and a random salt. The salt is saved to be
+// used during decryption.
 function SaveKeys() {
   var key_str = JSON.stringify(keys);
-  Log("Debug: SaveKeys(): key_str = " + key_str);
-  Log("Debug: SaveKeys(): typeof key_str = " + typeof key_str);
-  Log("Debug: SaveKeys(): len = " + key_str.length);
+  Log("SaveKeys(): Key table to save: " + key_str);
   var password = GetPassword(true);
-  Log("Debug: SaveKeys(): password = " + password);
   var salt = GetRandomValues(4);
-  Log("Debug: SaveKeys(): salt = " + salt);
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-  Log("Debug: SaveKeys(): table_key = " + table_key);
-  Log("Debug: SaveKeys(): typeof table_key = " + typeof table_key);
   var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str);
-  Log("Debug: SaveKeys(): enc_key_str = " + enc_key_str);
-  Log("Debug: SaveKeys(): typeof enc_key_str = " + typeof enc_key_str);
+  Log("SaveKeys(): Encrypted key_table: " + enc_key_str);
   localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
   saveSalt(salt);
 }
 
 // Load the group keys from disk.
+//
+// Retrieve the encrypted key table from LocalStorage, decrypt it using the
+// derived key and load into associative array. The key required for decryption
+// is derived using user password and the saved salt.
 function LoadKeys() {
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
     var enc_key_str = decodeURIComponent(saved);
-    Log("Debug: LoadKeys(): enc_key_str = " + enc_key_str);
+    Log("LoadKeys(): enc_key_str = " + enc_key_str);
     var password = GetPassword(true);
-    Log("Debug: LoadKeys(): password = " + password);
     var salt = getSalt();
-    Log("Debug: LoadKeys(): salt = " + salt);
     var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-    Log("Debug: LoadKeys(): table_key = " + table_key);
-    Log("Debug: LoadKeys(): typeof table_key = " + typeof table_key);
     var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
-    Log("Debug: LoadKeys(): key_str = " + key_str);
+    Log("LoadKeys(): key_str = " + key_str);
     keys = JSON.parse(key_str);
   }
 }
@@ -149,21 +134,25 @@ function LoadKeys() {
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
 
-// Encrypt a plain text message using a key
+// Encrypt a plain text message using the provided key.
+//
+// The function pads the message as required. The message is 
+// first converted to its ascii equivalent to better work
+// with AES functions.
 //
 // @param (String) key Key used to encrypt
 // @param (String) msg Message to encrypt
 // @return (String) Encryption of msg, encoded as a string.
 // does not check for null msg
 function aesEncrypt(key, msg) {
+    key = sjcl.codec.base64.toBits(key);
+    var cipher = new sjcl.cipher.aes(key);
+    var cipherText = new Array();
+
     var xorBlock = new Array();
     xorBlock = GetRandomValues(4);
     var asciiStr = strToAscii(msg);
     var paddedAsciiStr = padAscii(asciiStr);
-
-    key = sjcl.codec.base64.toBits(key);
-    var cipher = new sjcl.cipher.aes(key);
-    var cipherText = new Array();
     cipherText = cipherText.concat(xorBlock);
 
     while (paddedAsciiStr.length > 0) {
@@ -178,12 +167,18 @@ function aesEncrypt(key, msg) {
 
 // Decrypt cipher text using key
 //
+// The cipher text is first decrypted using the key. Then any
+// extra padding is removed to get the ascii equivalent of the plain text.
+// This is then converted to a character string and returned.
+//
 // @param (String) key Key used to decrypt
 // @param (String) ctext The cipher text message to decrypt
 // @return (String) Decrypted string, encoded as a string.
 function aesDecrypt(key, ctext) {
+    // Convert from string to object
     var cText = sjcl.codec.base64.toBits(ctext);
     key = sjcl.codec.base64.toBits(key);
+
     var cipher = new sjcl.cipher.aes(key);
     var xorBlock = cText.splice(0,4);
     var asciiStr = new Array();
@@ -207,8 +202,7 @@ function aesDecrypt(key, ctext) {
 // @returns None
 function saveSalt(salt) {
   var salt_str = JSON.stringify(salt);
-  // todo: saving in plaintext?
-  Log("Debug: saveSalt(): salt_str = " + salt_str);
+  Log("saveSalt(): Saving salt:" + salt_str);
   localStorage.setItem('facebook-salt-' + my_username, encodeURIComponent(salt_str));
 }
 
@@ -221,41 +215,40 @@ function getSalt() {
   var saved = localStorage.getItem('facebook-salt-' + my_username);
   if (saved) {
     salt_str = decodeURIComponent(saved);
-    Log("Debug: getSalt(): salt_str = " + salt_str);
+    Log("getSalt(): Retrieved salt:" + salt_str);
     salt = JSON.parse(salt_str);
-    Log("Debug: getSalt(): salt = " + salt);
     return salt;
   }
-  Log("Debug: getSalt(): Salt not found");
-  return "";
+  Log("getSalt(): Salt not found");
+  sjcl.exception.invalid("No salt found on LocalStorage");
 }
 
-//Xors two arrays
-//Must be same length
+// XORs two arrays
+// 
+// The two arrays must be the same length
+//
+// @param arr1
+// @param arr2
+// @returns arr1 XOR arr2
 function XorArr(arr1, arr2)
 {
     var res = new Array();
-
     for(var i = 0; i < arr1.length; ++i) {
         var xored = arr1[i] ^ arr2[i];
         res.push(xored);
     }
-
     return res;
 }
 
-function Log(msg) {
-  if (debug) {
-    console.log(msg);
-  }
-}
-
+// Pad the ascii byteArray into right block size (16)
+//
+// @param byteArray
+// @returns padded byteArray
 function padAscii(byteArray) {
     var padLength = 16 - (byteArray.length % 16);
     for (var i = 0; i < padLength; ++i) {
         byteArray.push(padLength);
     }
-
     var intArray = new Array();
     for (var i = 0; i < byteArray.length / 4; ++i) {
         var newInt = 0;
@@ -264,10 +257,13 @@ function padAscii(byteArray) {
         }
         intArray.push(newInt);
     }
-
     return intArray;
 }
 
+// Remove padding from byteArray
+//
+// @param byteArray
+// @returns Original byteArray
 function unpadAscii(intArray) {
     var byteArray = new Array();
     for (var i = 0; i < intArray.length; ++i) {
@@ -294,12 +290,10 @@ function strToAscii(str) {
   var len = str.length;
   var asciiStr = new Array(len);
   var i;
-
   for (i=0; i<len; i++) {
     asciiStr[i] = str.charCodeAt(i);
   }
-  Log("Debug: strToInt(): Input String = " + str);
-  Log("Debug: strToInt(): Converted asciiStr = " + asciiStr);
+  Log("strToAscii(): string: " + str + " Ascii: " + asciiStr);
   return asciiStr;
 }
 
@@ -311,21 +305,18 @@ function asciiToStr(asciiStr) {
   var len = asciiStr.length;
   var str = "";
   var i;
-
   for (i=0; i<len; i++) {
     str = str.concat(String.fromCharCode(asciiStr[i]));
   }
-
-  Log("Debug: intToStr(): Input asciiStr = " + asciiStr);
-  Log("Debug: intToStr(): Converted str = " + str);
+  Log("intToStr(): asciiStr: " + asciiStr + " str = " + str);
   return str;
 }
 
-// Get password via prompt, and store in cookie
-// Set fromCookie argument to true to get password from cookie.
-// Set fromCookie argument to false to force UI to request password
-// First time use (unset cookie), user is prompted to enter password
-// Get the user password used to encrypt/decrypt key table
+// Get user password
+//
+// Attempt to get password from sessionStorage. If not present, then
+// get password from user. This password is used to encrypt/decrypt
+// the group key table.
 //
 // @param (Bool) True: Get password from session Storage
 //               False: Get password via user prompt
@@ -333,55 +324,22 @@ function asciiToStr(asciiStr) {
 function GetPassword(fromSessionStorage) {
     var password;
     var enc_passwd;
-
     if(fromSessionStorage == true) {
-        enc_passwd = sessionStorage.getItem(kdp);
-        password = decryptString(enc_passwd);
+        password = sessionStorage.getItem(kdp);
     }
-
-    Log("Debug: UserPassword = " + password);
-    
     if(fromSessionStorage == false || password == null) {
         password = prompt("Enter key database password", "");
-        enc_passwd = encryptString(password);
-        sessionStorage.setItem(kdp, enc_passwd);
+        sessionStorage.setItem(kdp, password);
     }
+    Log("GetPassword(): password = " + password);
     return password;
 }
 
-function encryptString(str) {
-
-    var enc_str;
-
-    // todo 
-    enc_str = str;
-    return enc_str;
-}
-
-function decryptString(enc_str) {
-
-    var str;
-
-    // todo
-    str = enc_str;
-
-    return str;
-}
-
-function IntArrayToHexStr(intArray) {
-    var val = 0;
-    var str = new String();
-
-    for(var i=0; i<intArray.length; i++) {
-        val = intArray[i];
-        val += 2147483648;
-        var s = val.toString(16);
-        s = Array(9 - s.length).join('0') + s;
-        str += s;
-    }
-    str = str + '';
-
-    return str;
+// Simple Log function
+function Log(msg) {
+  if (debug) {
+    console.log(msg);
+  }
 }
 
 /////////////////////////////////////////////////////////
@@ -1447,12 +1405,12 @@ sjcl.codec.base64 = {
     for (i=0; i<str.length; i++) {
       x = c.indexOf(str.charAt(i));
       if (! (0 <= str.charCodeAt(i) && str.charCodeAt(i) <=127)) {
-        Log("Debug: toBits(): char ascii = " + str.charCodeAt(i));
+        //Log("toBits(): char ascii = " + str.charCodeAt(i));
         continue;
       }
       if (x < 0) {
         if (debug) {
-          throw new sjcl.exception.invalid("Debug: str.length = " + str.length + " Char = @@" + str.charAt(i) + "@@ i = " + i);
+          throw new sjcl.exception.invalid("str.length = " + str.length + " Char = @@" + str.charAt(i) + "@@ i = " + i);
         } else {
           throw new sjcl.exception.invalid("this isn't base64!");
         }
