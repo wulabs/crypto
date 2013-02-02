@@ -329,6 +329,10 @@ function GetPassword(fromSessionStorage) {
     }
     if(fromSessionStorage == false || password == null) {
         password = prompt("Enter key database password", "");
+	if (password.length > 32) {
+	  alert("Too long for a password. Truncating to 32 characters");
+	  password = password.substr(0,32);
+	}
         sessionStorage.setItem(kdp, password);
     }
     Log("GetPassword(): password = " + password);
