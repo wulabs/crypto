@@ -22,6 +22,18 @@ are entries in the Group->Key table.
     - In case of a wrong password, an alert() is provided and the prompt
       appears again.
 
+  * Password Validation:
+    - When a user enters a password, we try to decrypt the key table. In case
+      the password is wrong, decryption does not succeed. We detect this
+      and appropriate message is displayed. The user is then asked the enter
+      the password again.
+
+      There is no check on the number of attempts the user gets to enter
+      the right password. This could potentially lead to a brute force
+      attack on the password. Possible solution to this is to keep track
+      on the number of unsuccessful atempts. However such solutions are
+      outside the scope of the project.
+
 
 Milestone 1:
 ============
