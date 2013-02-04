@@ -51,7 +51,7 @@ function Encrypt(plainText, group) {
       var key = keys[group];
       Log("Encrypt(): group = " + group + " key = " + key);
       var cipherText = aesEncrypt(key, plainText);
-      return cipherText;
+      return 'AESCrpt:' + cipherText;
 }
 
 // Return the decryption of the message for the given group, in the form of a string.
@@ -61,6 +61,13 @@ function Encrypt(plainText, group) {
 // @param {String} group Group name.
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
+      if (cipherText.indexOf('AESCrpt:') != 0) {
+        throw "Not Encrypted";
+        return cipherText;
+      }
+
+      cipherText =cipherText.slice(8);
+
       if (typeof keys[group] === 'undefined') {
           Log("Decrypt(): Key for group not found. No decryption for you.");
           throw new sjcl.exception.invalid("No key to decrypt! Check Account Settings.");
