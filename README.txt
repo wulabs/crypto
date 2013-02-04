@@ -9,7 +9,7 @@ are entries in the Group->Key table.
   Case (1): cs255.localStorage is empty
     - User is free to access the group page and other facebook book pages.
     - Messages cannot be encrypted or decrypted. If encryption is tried, an
-      Alert() is provided to notify the user that encryption key is missing.
+      Alert() is provided to notifiy the user that encryption key is missing.
       If decryption is tried, an invalid exception is thrown and a suitable
       message is provided to the user.
     - Password is set when the user generates a new Key for a Group the
@@ -35,12 +35,12 @@ are entries in the Group->Key table.
   the user logs out and closes the tab. However, sessionStorage is on a per
   tab. Consider a case where a user logs into FB on one tab. Then opens up
   the account page in a different tab. The browser lets you do this. Now, the
-  user logs off from the second tab and closes it. At this time, although
+  user logs off from the second tab and closes it. At this time, although 
   the user is logged out, the sessionStorage still persists from the first tab.
   This could potentially lead to an attack. One possible solution against this
-  is to use cookie information while reading and writing data from/to
-  sessionStorage. We can allow information in the sessionStorage to be
-  accessible only if the cookie (with the user login information) present.
+  is to use cookie information while reading and writing data from/to 
+  sessionStorage. We can allow information in the sessionStorage to be 
+  accessiable only if the cookie (with the user login information) present.
 
   The password is the weakest link in the system. We assume that the user
   chooses a sufficiently strong password.
@@ -63,7 +63,7 @@ Milestone 1:
     - AES is used to encrypt decrypt the messages. AES uses 128 bit block
       size. So after 2^64 blocks, we are expected to change the key. This
       number is pretty huge.
-    - Although 2^64 block of data is pretty big, theoretically, this limit
+    - Although 2^64 block of data is pretty big, theoritically, this limit
       can be reached. Our code does not consider this. So after this limit,
       our code is not considered secure.
   
@@ -81,7 +81,7 @@ Milestone 1:
   Why is it secure?
     - CBC encryption with random IV is secure
     - Even if the message is just one block size in length, random IV
-      guarantees that no two messages return the same ciphertext.
+      gurantees that no two messages return the same ciphertext.
 
 
 * Group->Key table:
@@ -110,7 +110,7 @@ Milestone 1:
 
 * Issues with cryptography in a browser
 ---------------------------------------
-  - Securely delivering javascript to a browser is a chiken-egg problem.
+  - Securly delivering javascript to a browser is a chiken-egg problem.
   - Perfect security could be slow (esp for page refresh/responsiveness)
   - Unreliable runtime environment.
 
@@ -123,12 +123,12 @@ Milestone 1:
   - Get data stored in browser memory
   - All encryption is based on password. Although attempt is made in the
     code to leak information about the keys, an attacker can always guess
-    the password using social engineering attacks or dupe the user into
+    the password using social engineering attacks or dupe the user into 
     entering the password using pishing attacks.
   
-
+ 
 * Assumptions in the code
 -------------------------
-  - Random number generator is truly (Pseudo) random
+  - Random number generator is truely (Pseudo) random
   - No bugs in AES primitives.
-  - Implicit assumption that data in the disk is not tampered with.
+  - Implicit assumption that data in the disk is not tampered with. 
