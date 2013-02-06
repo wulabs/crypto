@@ -24,10 +24,13 @@
 // See http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 "use strict";
 
-var debug = 0;   // Set to 1 to turn on debug statements
+var debug = 1;   // Set to 1 to turn on debug statements
 var my_username; // user signed in as
 var keys = {};   // association map of keys: group -> key
 var kdp = "kdp"  // Key database password string
+var msg_salt  = "MSG_Salt";
+var mac_salt1 = "MAC_Salt1";
+var mac_salt2 = "MAC_Salt2";
 
 // Some initialization functions are called at the very end of this script.
 // You only have to edit the top portion.
@@ -50,8 +53,10 @@ function Encrypt(plainText, group) {
       }
       var key = keys[group];
       Log("Encrypt(): group = " + group + " key = " + key);
-      var cipherText = aesEncrypt(key, plainText);
-      return 'AESCrpt:' + cipherText;
+      var cipherText = aesEncrypt(key, plainText, true);
+      var public_str = addMAC(cipherText);
+
+      return 'AESCrpt:' + public_str;
 }
 
 // Return the decryption of the message for the given group, in the form of a string.
@@ -60,13 +65,18 @@ function Encrypt(plainText, group) {
 // @param {String} cipherText String to decrypt.
 // @param {String} group Group name.
 // @return {String} Decryption of the ciphertext.
-function Decrypt(cipherText, group) {
-      if (cipherText.indexOf('AESCrpt:') != 0) {
+function Decrypt(public_str, group) {
+      if (public_str.indexOf('AESCrpt:') != 0 ) {
         throw "Not Encrypted";
-        return cipherText;
+        return public_str;
       }
 
-      cipherText =cipherText.slice(8);
+      public_str = public_str.slice(8);
+
+      var cipherText = verifyAndRemoveMAC(public_str);
+      if (cipherText.length < 0) {
+        throw "MAC Authentication failed";
+      }
 
       if (typeof keys[group] === 'undefined') {
           Log("Decrypt(): Key for group not found. No decryption for you.");
@@ -107,10 +117,10 @@ function SaveKeys() {
   var password = GetPassword(true);
   var salt = GetRandomValues(4);
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-  var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str);
+  var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str, true);
   Log("SaveKeys(): Encrypted key_table: " + enc_key_str);
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
-  saveSalt(salt);
+  saveSalt(msg_salt, salt);
 }
 
 // Load the group keys from disk.
@@ -128,7 +138,7 @@ function LoadKeys() {
     Log("LoadKeys(): enc_key_str = " + enc_key_str);
     while (continueLoop) {
       var password = GetPassword(flag);
-      var salt = getSalt();
+      var salt = getSalt("MsgSalt");
       var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
       var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
       Log("LoadKeys(): key_str = @@@" + key_str + "@@@");
@@ -151,6 +161,97 @@ function LoadKeys() {
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
 
+// @param message (String) Message for which tag is calculated
+// @return (String) The tag + message on success
+//                  Empty string on error
+function addMAC(message) {
+// If salt1 and salt2 are in storage, retrieve it else create one
+// get password
+// generate key1 and key2
+// generate tag_message with key1
+// encrypt tag_message with key2
+  var password = GetPassword(true);
+  var salt1 = getSalt(mac_salt1);
+  if (salt1 == "ERR") {
+    Log("addMAC(): Salt1 not found. Creating one");
+    salt1 = GetRandomValues(4);
+    saveSalt(mac_salt1, salt1);
+  }
+  var salt2 = getSalt(mac_salt2);
+  if (salt2 == "ERR") {
+    Log("addMac(): Salt2 not found. Creating one");
+    salt2 = GetRandomValues(4);
+    saveSalt(mac_salt2, salt2);
+  }
+  var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
+  var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+  key1 = sjcl.codec.base64.fromBits(key1); // To String
+  key2 = sjcl.codec.base64.fromBits(key2); // To String
+
+  Log("addMAC(): key1 = " + key1);
+  Log("addMAC(): key2 = " + key2);
+  var msg1 = rawCBC(key1, message);
+  var tag = aesEncrypt(key2, msg1, true);
+  Log("addMAC(): phase1 output = " + msg1);
+  Log("addMAC(): tag = " + tag);
+  Log("addMAC(): tag len = " + tag.length);
+  Log("addMAC(): msg = " + message);
+  return tag + message;
+}
+
+// @param (String) Tag + Message for which MAC has to be verified
+// @return (String) The message if verification succeeds
+//                  Empty string if verification fails
+function verifyAndRemoveMAC(message) {
+  Log("verifyAndRemoveMAC(): Input message = " + message);
+  // strip tag (in string form)
+  var msg_tag = message.substr(0,64);
+  var message = message.substr(64);
+  Log("verifyAndRemoveMAC(): Tag = " + msg_tag);
+  Log("verifyAndRemoveMAC(): Message = " + message);
+
+  var password = GetPassword(true);
+  var salt1 = getSalt(mac_salt1);
+  var salt2 = getSalt(mac_salt2);
+  var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
+  var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+  key1 = sjcl.codec.base64.fromBits(key1); // To String
+  key2 = sjcl.codec.base64.fromBits(key2); // To String
+
+  Log("verifyAndRemoveMAC(): key1 = " + key1);
+  Log("verifyAndRemoveMAC(): key2 = " + key2);
+  var msg1 = rawCBC(key1, message);
+  var tag = aesEncrypt(key2, msg1, false);
+  Log("verifyAndRemoveMAC(): phase1 output = " + msg1);
+  Log("verifyAndRemoveMAC(): tag = " + tag);
+  Log("verifyAndRemoveMAC(): tag len = " + tag.length);
+  Log("verifyAndRemoveMAC(): msg = " + message);
+
+  Log("VerifyAndRemoveMAC(): input tag = " + msg_tag);
+  Log("VerifyAndRemoveMAC(): calc  tag = " + tag);
+  return message;
+}
+
+// key = string
+// msg = string
+// return string
+function rawCBC(key, msg) {
+  key = sjcl.codec.base64.toBits(key);
+  var cipher = new sjcl.cipher.aes(key);
+  var asciiStr = strToAscii(msg);
+  var paddedAsciiStr = padAscii(asciiStr);
+  var xorBlock = new Array(4);
+  xorBlock[0] = 42; xorBlock[1] = 42; xorBlock[3] = 42; xorBlock[4] = 42;
+  while (paddedAsciiStr.length > 0) {
+    var plainBlock = paddedAsciiStr.splice(0, 4);
+    var cipherBlock = XorArr(plainBlock, xorBlock);
+    cipherBlock = cipher.encrypt(cipherBlock);
+    xorBlock = cipherBlock;
+  }
+  return sjcl.codec.base64.fromBits(cipherBlock);
+}
+
+
 // Encrypt a plain text message using the provided key.
 //
 // The function pads the message as required. The message is 
@@ -161,13 +262,20 @@ function LoadKeys() {
 // @param (String) msg Message to encrypt
 // @return (String) Encryption of msg, encoded as a string.
 // does not check for null msg
-function aesEncrypt(key, msg) {
+function aesEncrypt(key, msg, save) {
     key = sjcl.codec.base64.toBits(key);
     var cipher = new sjcl.cipher.aes(key);
     var cipherText = new Array();
 
     var xorBlock = new Array();
-    xorBlock = GetRandomValues(4);
+
+    if (save == true) {
+      xorBlock = GetRandomValues(4);
+      saveSalt("IV", xorBlock);
+    } else {
+      xorBlock = getSalt("IV");
+    }
+
     var asciiStr = strToAscii(msg);
     var paddedAsciiStr = padAscii(asciiStr);
     cipherText = cipherText.concat(xorBlock);
@@ -215,29 +323,30 @@ function aesDecrypt(key, ctext) {
 
 // Save the salt in local storage
 //
+// @param (String) name The name of the salt
 // @param (object) salt The salt to save
 // @returns None
-function saveSalt(salt) {
+function saveSalt(name, salt) {
   var salt_str = JSON.stringify(salt);
-  Log("saveSalt(): Saving salt:" + salt_str);
-  cs255.localStorage.setItem('facebook-salt-' + my_username, encodeURIComponent(salt_str));
+  Log("saveSalt(): Saving salt:" + salt_str + " With name:" + name);
+  cs255.localStorage.setItem('facebook-' + name + '-' + my_username, encodeURIComponent(salt_str));
 }
 
 // Retrive the salt from local storage
 //
-// @param None
+// @param (String) name The name of the salt to retrieve
 // @return (Object) The salt. null on error.
-function getSalt() {
+function getSalt(name) {
   var salt_str, salt;
-  var saved = cs255.localStorage.getItem('facebook-salt-' + my_username);
+  var saved = cs255.localStorage.getItem('facebook-' + name + '-' + my_username);
   if (saved) {
     salt_str = decodeURIComponent(saved);
-    Log("getSalt(): Retrieved salt:" + salt_str);
+    Log("getSalt(): Retrieved salt:" + salt_str + " With name: " + name);
     salt = JSON.parse(salt_str);
     return salt;
   }
-  Log("getSalt(): Salt not found");
-  sjcl.exception.invalid("No salt found on LocalStorage");
+  Log("getSalt(): Salt with name " + name + " not found");
+  return "ERR";
 }
 
 // XORs two arrays
