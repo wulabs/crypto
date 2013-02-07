@@ -47,7 +47,7 @@ function Encrypt(plainText, group) {
         return plainText;
       }
       if (typeof keys[group] === 'undefined') {
-          Log("Encrypt(): Key for group not found. No encryption for you.");
+          Log("Encrypt(): ERROR: Key for group not found. No encryption for you.");
           alert("No key to encrypt! Check Account Settings.");
           return plainText;
       }
@@ -74,12 +74,12 @@ function Decrypt(public_str, group) {
       public_str = public_str.slice(8);
 
       var cipherText = verifyAndRemoveMAC(public_str);
-      if (cipherText.length < 0) {
+      if (cipherText == "ERROR") {
         throw "MAC Authentication failed";
       }
 
       if (typeof keys[group] === 'undefined') {
-          Log("Decrypt(): Key for group not found. No decryption for you.");
+          Log("Decrypt(): ERROR: Key for group not found. No decryption for you.");
           throw new sjcl.exception.invalid("No key to decrypt! Check Account Settings.");
       }
       var key = keys[group];
@@ -118,6 +118,7 @@ function SaveKeys() {
   var salt = GetRandomValues(4);
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
   var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str, true);
+  enc_key_str = addMAC(enc_key_str);
   Log("SaveKeys(): Encrypted key_table: " + enc_key_str);
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
   saveSalt(msg_salt, salt);
@@ -136,9 +137,19 @@ function LoadKeys() {
   if (saved) {
     var enc_key_str = decodeURIComponent(saved);
     Log("LoadKeys(): enc_key_str = " + enc_key_str);
+    enc_key_str = verifyAndRemoveMAC(enc_key_str);
+    if (enc_key_str == "ERROR") {
+//      throw "Key table MAC authentication failed";
+      Log("LoadKeys(): ERROR: Key table MAC authentication failed");
+      return;
+    }
     while (continueLoop) {
       var password = GetPassword(flag);
-      var salt = getSalt("MsgSalt");
+      var salt = getSalt(msg_salt);
+      if (salt == "ERROR") {
+        Load("LoadKeys(): Required salt 'MsgSalt' not found on localStorage");
+        return;
+      }
       var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
       var key_str = aesDecrypt(sjcl.codec.base64.fromBits(table_key), enc_key_str);
       Log("LoadKeys(): key_str = @@@" + key_str + "@@@");
@@ -161,24 +172,24 @@ function LoadKeys() {
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
 
+// Add MAC to given message
+//
+// The function uses two different MAC keys to generate a tag
+// The salts used for key derivation is generated as a
+// random value the first time and later read from localStorage.
+//
 // @param message (String) Message for which tag is calculated
 // @return (String) The tag + message on success
-//                  Empty string on error
 function addMAC(message) {
-// If salt1 and salt2 are in storage, retrieve it else create one
-// get password
-// generate key1 and key2
-// generate tag_message with key1
-// encrypt tag_message with key2
   var password = GetPassword(true);
   var salt1 = getSalt(mac_salt1);
-  if (salt1 == "ERR") {
+  if (salt1 == "ERROR") {
     Log("addMAC(): Salt1 not found. Creating one");
     salt1 = GetRandomValues(4);
     saveSalt(mac_salt1, salt1);
   }
   var salt2 = getSalt(mac_salt2);
-  if (salt2 == "ERR") {
+  if (salt2 == "ERROR") {
     Log("addMac(): Salt2 not found. Creating one");
     salt2 = GetRandomValues(4);
     saveSalt(mac_salt2, salt2);
@@ -199,9 +210,14 @@ function addMAC(message) {
   return tag + message;
 }
 
+// Strip MAC after verification
+//
+// Recalculate the MAC for the message and compare with given
+// MAC
+//
 // @param (String) Tag + Message for which MAC has to be verified
 // @return (String) The message if verification succeeds
-//                  Empty string if verification fails
+//                  ERROR if verification fails
 function verifyAndRemoveMAC(message) {
   Log("verifyAndRemoveMAC(): Input message = " + message);
   // strip tag (in string form)
@@ -213,6 +229,10 @@ function verifyAndRemoveMAC(message) {
   var password = GetPassword(true);
   var salt1 = getSalt(mac_salt1);
   var salt2 = getSalt(mac_salt2);
+  if (salt1 == "ERROR" || salt2 == "ERROR") {
+    Log("verifyAndRemove(): ERROR: Required salts not found");
+    return "ERROR";
+  }
   var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
   var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
   key1 = sjcl.codec.base64.fromBits(key1); // To String
@@ -229,12 +249,22 @@ function verifyAndRemoveMAC(message) {
 
   Log("VerifyAndRemoveMAC(): input tag = " + msg_tag);
   Log("VerifyAndRemoveMAC(): calc  tag = " + tag);
-  return message;
+  if (msg_tag == tag) {
+    return message;
+  } else {
+    Log("VerifyAndRemoveMAC(): ERROR: Tag comparison failed!");
+    return "ERROR";
+  }
 }
 
-// key = string
-// msg = string
-// return string
+// Perform raw CBC for the message with given key
+//
+// To be used only in conjunction with aesEncrypt to
+// calculate MAC of a message.
+//
+// @param (String) key Key
+// @param (String) msg The message to process
+// @returns (String) Block after raw CBC operation
 function rawCBC(key, msg) {
   key = sjcl.codec.base64.toBits(key);
   var cipher = new sjcl.cipher.aes(key);
@@ -260,7 +290,11 @@ function rawCBC(key, msg) {
 //
 // @param (String) key Key used to encrypt
 // @param (String) msg Message to encrypt
-// @return (String) Encryption of msg, encoded as a string.
+// @param   (Bool) save A flag to control how the IV is generated.
+//                     If set to True, a random IV is generated
+//                     If set to False, reads the IV from storage
+// @return (String)    Encryption of msg, encoded as a string.
+//                     Empty string on error
 // does not check for null msg
 function aesEncrypt(key, msg, save) {
     key = sjcl.codec.base64.toBits(key);
@@ -274,6 +308,10 @@ function aesEncrypt(key, msg, save) {
       saveSalt("IV", xorBlock);
     } else {
       xorBlock = getSalt("IV");
+      if (xorBlock == "ERROR") {
+        Log("aesEncrypt(): ERROR: Required IV salt not found");
+        return "";
+      }
     }
 
     var asciiStr = strToAscii(msg);
@@ -345,8 +383,8 @@ function getSalt(name) {
     salt = JSON.parse(salt_str);
     return salt;
   }
-  Log("getSalt(): Salt with name " + name + " not found");
-  return "ERR";
+  Log("getSalt(): ERROR: Salt with name " + name + " not found");
+  return "ERROR";
 }
 
 // XORs two arrays
@@ -455,10 +493,10 @@ function GetPassword(fromSessionStorage) {
     }
     if(fromSessionStorage == false || password == null) {
         password = prompt("Enter key database password", "");
-	if (password.length > 32) {
-	  alert("Too long for a password. Truncating to 32 characters");
-	  password = password.substr(0,32);
-	}
+    if (password.length > 32) {
+      alert("Too long for a password. Truncating to 32 characters");
+      password = password.substr(0,32);
+    }
         sessionStorage.setItem(kdp, password);
     }
     Log("GetPassword(): password = " + password);
@@ -702,6 +740,26 @@ function AddEncryptionTab() {
       table.setAttribute('border', 1);
       table.setAttribute('width', "80%");
       div.appendChild(table);
+
+      var clearSessionStorage = document.createElement('button');
+      clearSessionStorage.innerHTML = "Clear sessionStorage";
+      clearSessionStorage.addEventListener("click", function() {
+        sessionStorage.clear();
+        console.log("Cleared sessionStorage.");
+      });
+
+      div.appendChild(document.createElement('br'));
+      div.appendChild(clearSessionStorage);
+      var clearLocalStorage = document.createElement('button');
+      clearLocalStorage.innerHTML = "Clear localStorage";
+      clearLocalStorage.addEventListener("click", function() {
+        localStorage.clear();
+        cs255.localStorage.clear();
+        console.log("Cleared localStorage, including the extension cache.");
+      });
+
+      div.appendChild(document.createElement('br'));
+      div.appendChild(clearLocalStorage);
     }
   }
 }
