@@ -54,7 +54,7 @@ function Encrypt(plainText, group) {
       var key = keys[group];
       Log("Encrypt(): group = " + group + " key = " + key);
       var cipherText = aesEncrypt(key, plainText, true);
-      var public_str = addMAC(cipherText);
+      var public_str = addMAC(cipherText, sjcl.codec.base64.fromBits(key), "message");
 
       return 'AESCrpt:' + public_str;
 }
@@ -70,13 +70,7 @@ function Decrypt(public_str, group) {
         throw "Not Encrypted";
         return public_str;
       }
-
       public_str = public_str.slice(8);
-
-      var cipherText = verifyAndRemoveMAC(public_str);
-      if (cipherText == "ERROR") {
-        throw "MAC Authentication failed";
-      }
 
       if (typeof keys[group] === 'undefined') {
           Log("Decrypt(): ERROR: Key for group not found. No decryption for you.");
@@ -84,6 +78,12 @@ function Decrypt(public_str, group) {
       }
       var key = keys[group];
       Log("Decrypt(): group = " + group + " key = " + key);
+
+      var cipherText = verifyAndRemoveMAC(public_str, sjcl.codec.base64.fromBits(key), "message");
+      if (cipherText == "ERROR") {
+        throw "MAC Authentication failed";
+      }
+
       var plainText = aesDecrypt(key, cipherText);
       return plainText;
 }
@@ -118,7 +118,7 @@ function SaveKeys() {
   var salt = GetRandomValues(4);
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
   var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str, true);
-  enc_key_str = addMAC(enc_key_str);
+  enc_key_str = addMAC(enc_key_str, "", "keytable");
   Log("SaveKeys(): Encrypted key_table: " + enc_key_str);
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
   saveSalt(msg_salt, salt);
@@ -137,9 +137,8 @@ function LoadKeys() {
   if (saved) {
     var enc_key_str = decodeURIComponent(saved);
     Log("LoadKeys(): enc_key_str = " + enc_key_str);
-    enc_key_str = verifyAndRemoveMAC(enc_key_str);
+    enc_key_str = verifyAndRemoveMAC(enc_key_str, "", "keytable");
     if (enc_key_str == "ERROR") {
-//      throw "Key table MAC authentication failed";
       Log("LoadKeys(): ERROR: Key table MAC authentication failed");
       return;
     }
@@ -180,29 +179,52 @@ function LoadKeys() {
 //
 // @param message (String) Message for which tag is calculated
 // @return (String) The tag + message on success
-function addMAC(message) {
+function addMAC(message, masterKey, type) {
   var password = GetPassword(true);
-  var salt1 = getSalt(mac_salt1);
-  if (salt1 == "ERROR") {
-    Log("addMAC(): Salt1 not found. Creating one");
-    salt1 = GetRandomValues(4);
-    saveSalt(mac_salt1, salt1);
+
+  if (type == "keytable") {
+    // If we are calculating the MAC of the keytable, then
+    // generate two new keys and use them. Other users dont
+    // need these keys as keytable is not shared.
+    var salt1 = getSalt(mac_salt1);
+    if (salt1 == "ERROR") {
+      Log("addMAC(): Salt1 not found. Creating one");
+      salt1 = GetRandomValues(4);
+      saveSalt(mac_salt1, salt1);
+    }
+    var salt2 = getSalt(mac_salt2);
+    if (salt2 == "ERROR") {
+      Log("addMac(): Salt2 not found. Creating one");
+      salt2 = GetRandomValues(4);
+      saveSalt(mac_salt2, salt2);
+    }
+    var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
+    var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+  } else {
+    // While generating the MAC of group messages, then use the group key as
+    // as a masterKey and derive two keys from it. We need to derive from
+    // the group key since the message (with tag) is posted and a different
+    // user has to be able to re-calculate the tag.
+    masterKey = sjcl.codec.base64.toBits(masterKey);
+    Log("addMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
+    var key1 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
+    var key2 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
   }
-  var salt2 = getSalt(mac_salt2);
-  if (salt2 == "ERROR") {
-    Log("addMac(): Salt2 not found. Creating one");
-    salt2 = GetRandomValues(4);
-    saveSalt(mac_salt2, salt2);
-  }
-  var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
-  var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+
   key1 = sjcl.codec.base64.fromBits(key1); // To String
-  key2 = sjcl.codec.base64.fromBits(key2); // To String
+
 
   Log("addMAC(): key1 = " + key1);
-  Log("addMAC(): key2 = " + key2);
+
   var msg1 = rawCBC(key1, message);
-  var tag = aesEncrypt(key2, msg1, true);
+  Log("addMAC(): msg1 = " + msg1);
+  //var tag = aesEncrypt(key2, msg1);
+  var cipher = new sjcl.cipher.aes(key2);
+  var tag = cipher.encrypt(sjcl.codec.base64.toBits(msg1));
+  Log("addMAC(): tag before = " + tag);
+  tag = sjcl.codec.base64.fromBits(tag);
+  key2 = sjcl.codec.base64.fromBits(key2); // To String
+  Log("addMAC(): key2 = " + key2);
   Log("addMAC(): phase1 output = " + msg1);
   Log("addMAC(): tag = " + tag);
   Log("addMAC(): tag len = " + tag.length);
@@ -218,30 +240,38 @@ function addMAC(message) {
 // @param (String) Tag + Message for which MAC has to be verified
 // @return (String) The message if verification succeeds
 //                  ERROR if verification fails
-function verifyAndRemoveMAC(message) {
+function verifyAndRemoveMAC(message, masterKey, type) {
   Log("verifyAndRemoveMAC(): Input message = " + message);
   // strip tag (in string form)
-  var msg_tag = message.substr(0,64);
-  var message = message.substr(64);
+  var msg_tag = message.substr(0,24);
+  var message = message.substr(24);
   Log("verifyAndRemoveMAC(): Tag = " + msg_tag);
   Log("verifyAndRemoveMAC(): Message = " + message);
 
   var password = GetPassword(true);
-  var salt1 = getSalt(mac_salt1);
-  var salt2 = getSalt(mac_salt2);
-  if (salt1 == "ERROR" || salt2 == "ERROR") {
-    Log("verifyAndRemove(): ERROR: Required salts not found");
-    return "ERROR";
+  if (type == "keytable") {
+    var salt1 = getSalt(mac_salt1);
+    var salt2 = getSalt(mac_salt2);
+    var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
+    var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+  } else {
+    masterKey = sjcl.codec.base64.toBits(masterKey);
+    Log("verifyAndRemoveMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
+    var key1 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
+    var key2 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
   }
-  var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
-  var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
+
   key1 = sjcl.codec.base64.fromBits(key1); // To String
-  key2 = sjcl.codec.base64.fromBits(key2); // To String
 
   Log("verifyAndRemoveMAC(): key1 = " + key1);
-  Log("verifyAndRemoveMAC(): key2 = " + key2);
+
   var msg1 = rawCBC(key1, message);
-  var tag = aesEncrypt(key2, msg1, false);
+//  var tag = aesEncrypt(key2, msg1);
+  var cipher = new sjcl.cipher.aes(key2);
+  var tag = cipher.encrypt(sjcl.codec.base64.toBits(msg1));
+  tag = sjcl.codec.base64.fromBits(tag);
+  key2 = sjcl.codec.base64.fromBits(key2); // To String
+  Log("verifyAndRemoveMAC(): key2 = " + key2);
   Log("verifyAndRemoveMAC(): phase1 output = " + msg1);
   Log("verifyAndRemoveMAC(): tag = " + tag);
   Log("verifyAndRemoveMAC(): tag len = " + tag.length);
@@ -296,23 +326,13 @@ function rawCBC(key, msg) {
 // @return (String)    Encryption of msg, encoded as a string.
 //                     Empty string on error
 // does not check for null msg
-function aesEncrypt(key, msg, save) {
+function aesEncrypt(key, msg) {
     key = sjcl.codec.base64.toBits(key);
     var cipher = new sjcl.cipher.aes(key);
     var cipherText = new Array();
 
     var xorBlock = new Array();
-
-    if (save == true) {
-      xorBlock = GetRandomValues(4);
-      saveSalt("IV", xorBlock);
-    } else {
-      xorBlock = getSalt("IV");
-      if (xorBlock == "ERROR") {
-        Log("aesEncrypt(): ERROR: Required IV salt not found");
-        return "";
-      }
-    }
+    xorBlock = GetRandomValues(4);
 
     var asciiStr = strToAscii(msg);
     var paddedAsciiStr = padAscii(asciiStr);
