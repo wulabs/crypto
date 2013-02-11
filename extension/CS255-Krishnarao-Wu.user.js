@@ -53,7 +53,7 @@ function Encrypt(plainText, group) {
       }
       var key = keys[group];
       Log("Encrypt(): group = " + group + " key = " + key);
-      var cipherText = aesEncrypt(key, plainText, true);
+      var cipherText = aesEncrypt(key, plainText);
       var public_str = addMAC(cipherText, sjcl.codec.base64.fromBits(key), "message");
 
       return 'AESCrpt:' + public_str;
@@ -91,14 +91,16 @@ function Decrypt(public_str, group) {
 // Generate a new key for the given group.
 //
 // A 256 bit key is generated for encryption of each of the messages
-// posted in that group. The key is derived using the user password
+// posted in that group. The key is derived using a random value
 // and a random salt. The key is base64 encoded.
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
-  var password = GetPassword(true);
   var salt = GetRandomValues(4);
-  var key = sjcl.misc.pbkdf2(password, salt, 3, 256);
+  var rand = GetRandomValues(4);
+  var rand_str = sjcl.codec.base64.fromBits(rand);
+  Log("GenerateKey(): Using random str: " + rand_str);
+  var key = sjcl.misc.pbkdf2(rand_str, salt, 3, 256);
   key = sjcl.codec.base64.fromBits(key);
   Log("GenerateKey(): Generated key: " + key + " for Group: " + group);
   keys[group] = key;
@@ -117,7 +119,7 @@ function SaveKeys() {
   var password = GetPassword(true);
   var salt = GetRandomValues(4);
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
-  var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str, true);
+  var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str);
   enc_key_str = addMAC(enc_key_str, "", "keytable");
   Log("SaveKeys(): Encrypted key_table: " + enc_key_str);
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
@@ -207,8 +209,8 @@ function addMAC(message, masterKey, type) {
     // user has to be able to re-calculate the tag.
     masterKey = sjcl.codec.base64.toBits(masterKey);
     Log("addMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
-    var key1 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
-    var key2 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
+    var key1 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,10,138), sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
+    var key2 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,100,238), sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
   }
 
   key1 = sjcl.codec.base64.fromBits(key1); // To String
@@ -257,8 +259,8 @@ function verifyAndRemoveMAC(message, masterKey, type) {
   } else {
     masterKey = sjcl.codec.base64.toBits(masterKey);
     Log("verifyAndRemoveMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
-    var key1 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
-    var key2 = sjcl.misc.pbkdf2("A phrase used as the password", sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
+    var key1 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,10,138), sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
+    var key2 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,100,238), sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
   }
 
   key1 = sjcl.codec.base64.fromBits(key1); // To String
@@ -279,6 +281,9 @@ function verifyAndRemoveMAC(message, masterKey, type) {
 
   Log("VerifyAndRemoveMAC(): input tag = " + msg_tag);
   Log("VerifyAndRemoveMAC(): calc  tag = " + tag);
+
+  // Doing direct comparison here. Could lead to timing attacks. This is ok for the
+  // the project. But ideally we need to have a different comparison.
   if (msg_tag == tag) {
     return message;
   } else {
