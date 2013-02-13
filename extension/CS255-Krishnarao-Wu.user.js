@@ -24,7 +24,7 @@
 // See http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 "use strict";
 
-var debug = 0;   // Set to 1 to turn on debug statements
+var debug = 1;   // Set to 1 to turn on debug statements
 var my_username; // user signed in as
 var keys = {};   // association map of keys: group -> key
 var kdp = "kdp"  // Key database password string
@@ -55,14 +55,16 @@ function Encrypt(plainText, group) {
     return plainText;
   }
 
-  var key = keys[group];
+  var big_key = keys[group];
+  var key_arr = big_key.split("||");
+  var key = key_arr[0];
   Log("Encrypt(): group = " + group + " key = " + key);
 
   // Encrypt using the group key
   var cipherText = aesEncrypt(key, plainText);
 
   // Add MAC tag
-  var public_str = addMAC(cipherText, sjcl.codec.base64.fromBits(key), "message");
+  var public_str = addMAC(cipherText, big_key, "message");
 
   // Return tag + message string
   return 'AESCrpt:' + public_str;
@@ -90,11 +92,13 @@ function Decrypt(public_str, group) {
     throw new sjcl.exception.invalid("No key to decrypt! Check Account Settings.");
   }
 
-  var key = keys[group];
+  var big_key = keys[group];
+  var key_arr = big_key.split("||");
+  var key = key_arr[0];
   Log("Decrypt(): group = " + group + " key = " + key);
 
   // Validate MAC tag and remove it
-  var cipherText = verifyAndRemoveMAC(public_str, sjcl.codec.base64.fromBits(key), "message");
+  var cipherText = verifyAndRemoveMAC(public_str, big_key, "message");
   if (cipherText == "ERROR") {
     throw "MAC Authentication failed";
   }
@@ -116,16 +120,35 @@ function GenerateKey(group) {
   var salt = GetRandomValues(4);
   var rand = GetRandomValues(4);
 
+  var salt_enc = GetRandomValues(4);
+  var salt_mac1 = GetRandomValues(4);
+  var salt_mac2 = GetRandomValues(4);
+
   var rand_str = sjcl.codec.base64.fromBits(rand);
   Log("GenerateKey(): Using random str: " + rand_str);
 
+  // Master key
   var key = sjcl.misc.pbkdf2(rand_str, salt, 3, 256);
-
   // To string
   key = sjcl.codec.base64.fromBits(key);
-  Log("GenerateKey(): Generated key: " + key + " for Group: " + group);
 
-  keys[group] = key;
+  // Generate Key for Message encryption/decryption
+  var enc_key = sjcl.misc.pbkdf2(key, salt_enc, 3, 256);
+
+  // Generate 2 keys for MAC
+  var mac_key1 = sjcl.misc.pbkdf2(key, salt_mac1, 3, 256);
+  var mac_key2 = sjcl.misc.pbkdf2(key, salt_mac2, 3, 256);
+
+  var enc_key_str = sjcl.codec.base64.fromBits(enc_key);
+  var mac_key1_str = sjcl.codec.base64.fromBits(mac_key1);
+  var mac_key2_str = sjcl.codec.base64.fromBits(mac_key2);
+
+  var big_key_str = enc_key_str + "||" + mac_key1_str + "||" + mac_key2_str;
+
+  Log("GenerateKey(): Generated big key: " + big_key_str + " for Group: " + group);
+
+
+  keys[group] = big_key_str;
   SaveKeys();
 }
 
@@ -250,14 +273,10 @@ function addMAC(message, masterKey, type) {
     var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
     var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
   } else {
-    // While generating the MAC of group messages, then use the group key as
-    // as a masterKey and derive two keys from it. We need to derive from
-    // the group key since the message (with tag) is posted and a different
-    // user has to be able to re-calculate the tag.
-    masterKey = sjcl.codec.base64.toBits(masterKey);
-    Log("addMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
-    var key1 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,10,138), sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
-    var key2 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,100,238), sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
+    Log("addMAC(): big key = " + masterKey);
+    var key_arr = masterKey.split("||");
+    var key1 = sjcl.codec.base64.toBits(key_arr[1]);
+    var key2 = sjcl.codec.base64.toBits(key_arr[2]);
   }
 
   key1 = sjcl.codec.base64.fromBits(key1); // To String
@@ -311,11 +330,10 @@ function verifyAndRemoveMAC(message, masterKey, type) {
     var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
     var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
   } else {
-    // For message verification, use the master key to derive MAC keys
-    masterKey = sjcl.codec.base64.toBits(masterKey);
-    Log("verifyAndRemoveMAC(): bitLength of master = " + sjcl.bitArray.bitLength(masterKey));
-    var key1 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,10,138), sjcl.bitArray.bitSlice(masterKey, 0, 500), 3, 256);
-    var key2 = sjcl.misc.pbkdf2(sjcl.bitArray.bitSlice(masterKey,100,238), sjcl.bitArray.bitSlice(masterKey, 500, 1000), 3, 256);
+    Log("addMAC(): big key = " + masterKey);
+    var key_arr = masterKey.split("||");
+    var key1 = sjcl.codec.base64.toBits(key_arr[1]);
+    var key2 = sjcl.codec.base64.toBits(key_arr[2]);
   }
 
   key1 = sjcl.codec.base64.fromBits(key1); // To String
