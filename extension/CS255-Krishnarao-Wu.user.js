@@ -207,17 +207,22 @@ function LoadKeys() {
     var enc_key_str = decodeURIComponent(saved);
     Log("LoadKeys(): enc_key_str = " + enc_key_str);
 
-    // Verify and remove MAC tag
-    enc_key_str = verifyAndRemoveMAC(enc_key_str, "", "keytable");
-    if (enc_key_str == "ERROR") {
-      Log("LoadKeys(): ERROR: Key table MAC authentication failed");
-      return;
-    }
-
     // Get user password and attempt decryption. If it fails, user password
     // is assumed wrong and prompt to ask the password appears again
     while (continueLoop) {
-      var password = GetPassword(flag);
+     var password = GetPassword(flag);
+
+      // Verify and remove MAC tag
+      var result = verifyAndRemoveMAC(enc_key_str, "", "keytable");
+      if (result == "ERROR") {
+        alert("Invalid Password. Click OK to try again.");
+        Log("LoadKeys(): ERROR: Key table MAC authentication failed");
+        flag = false;
+        continue;
+      }
+      enc_key_str = result;
+
+//      var password = GetPassword(flag);
 
       var salt = getSalt(msg_salt);
       if (salt == "ERROR") {
@@ -623,6 +628,7 @@ function GetPassword(fromSessionStorage) {
         password = sessionStorage.getItem(kdp);
     }
     if(fromSessionStorage == false || password == null) {
+      password = "";
       password = prompt("Enter key database password", "");
       if (password.length > 32) {
         alert("Too long for a password. Truncating to 32 characters");
