@@ -24,7 +24,7 @@
 // See http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 "use strict";
 
-var debug = 1;   // Set to 1 to turn on debug statements
+var debug = 0;   // Set to 1 to turn on debug statements
 var my_username; // user signed in as
 var keys = {};   // association map of keys: group -> key
 var kdp = "kdp"  // Key database password string
@@ -38,9 +38,9 @@ var mac_salt2 = "MAC_Salt2";
 // Return the encryption of the message for the given group, in the form of a string.
 // Also adds MAC integrity tag
 //
-// @param {String} plainText String to encrypt.
-// @param {String} group Group name.
-// @return {String} Encryption of the plaintext, encoded as a string.
+// @param  {String} plainText String to encrypt.
+// @param  {String} group     Group name.
+// @return {String}           Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
   // Ignore empty strings
   if (plainText.length < 1) {
@@ -55,12 +55,13 @@ function Encrypt(plainText, group) {
     return plainText;
   }
 
+  // Group-Key table contains all 3 keys. Deal with this.
   var big_key = keys[group];
   var key_arr = big_key.split("||");
   var key = key_arr[0];
   Log("Encrypt(): group = " + group + " key = " + key);
 
-  // Encrypt using the group key
+  // Encrypt using the message encryption/decryption key
   var cipherText = aesEncrypt(key, plainText);
 
   // Add MAC tag
@@ -73,9 +74,9 @@ function Encrypt(plainText, group) {
 // Return the decryption of the message for the given group, in the form of a string.
 // Throws an error in case the string is not properly encrypted.
 //
-// @param {String} cipherText String to decrypt.
-// @param {String} group Group name.
-// @return {String} Decryption of the ciphertext.
+// @param  {String} cipherText String to decrypt.
+// @param  {String} group      Group name.
+// @return {String}            Decryption of the ciphertext.
 function Decrypt(public_str, group) {
   // Return if string is not encrypted
   if (public_str.indexOf('AESCrpt:') != 0 ) {
@@ -92,6 +93,7 @@ function Decrypt(public_str, group) {
     throw new sjcl.exception.invalid("No key to decrypt! Check Account Settings.");
   }
 
+  // Deal with the concatinated keys
   var big_key = keys[group];
   var key_arr = big_key.split("||");
   var key = key_arr[0];
@@ -103,7 +105,7 @@ function Decrypt(public_str, group) {
     throw "MAC Authentication failed";
   }
 
-  // MAC integrity check success. Decrypt.
+  // MAC integrity check success, Decrypt.
   var plainText = aesDecrypt(key, cipherText);
 
   return plainText;
@@ -111,23 +113,28 @@ function Decrypt(public_str, group) {
 
 // Generate a new key for the given group.
 //
-// A 256 bit key is generated for encryption of each of the messages
-// posted in that group. The key is derived using a random value
-// and a random salt. The key is base64 encoded.
+// A 256 bit root key is first generated from a random salt and
+// random string. This root key is then used to generate 3 256bit
+// keys. One for message encrypt/decrypt and 2 for CBC-MAC tagging.
+// The keys are then concatinated and stored.
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
+  // Salt and Random value used to create the root Key
   var salt = GetRandomValues(4);
   var rand = GetRandomValues(4);
 
+  // Salts to create
+  //   - message encryption/decryption key
+  //   - MAC keys (2 keys for CBC MAC)
   var salt_enc = GetRandomValues(4);
   var salt_mac1 = GetRandomValues(4);
   var salt_mac2 = GetRandomValues(4);
 
-  var rand_str = sjcl.codec.base64.fromBits(rand);
+  var rand_str = sjcl.codec.base64.fromBits(rand); // To String
   Log("GenerateKey(): Using random str: " + rand_str);
 
-  // Master key
+  // root key
   var key = sjcl.misc.pbkdf2(rand_str, salt, 3, 256);
   // To string
   key = sjcl.codec.base64.fromBits(key);
@@ -135,10 +142,11 @@ function GenerateKey(group) {
   // Generate Key for Message encryption/decryption
   var enc_key = sjcl.misc.pbkdf2(key, salt_enc, 3, 256);
 
-  // Generate 2 keys for MAC
+  // Generate 2 keys for CBC-MAC
   var mac_key1 = sjcl.misc.pbkdf2(key, salt_mac1, 3, 256);
   var mac_key2 = sjcl.misc.pbkdf2(key, salt_mac2, 3, 256);
 
+  // To String
   var enc_key_str = sjcl.codec.base64.fromBits(enc_key);
   var mac_key1_str = sjcl.codec.base64.fromBits(mac_key1);
   var mac_key2_str = sjcl.codec.base64.fromBits(mac_key2);
@@ -147,26 +155,29 @@ function GenerateKey(group) {
 
   Log("GenerateKey(): Generated big key: " + big_key_str + " for Group: " + group);
 
-
+  // Assign keys to this group
   keys[group] = big_key_str;
+
   SaveKeys();
 }
 
 // Take the current group keys, and save them to disk.
 //
 // The key table is first encrypted using a 256 bit key and
-// then stored on LocalStorage. The key for encryption is derived
+// then stored on LocalStorage. The table key for encryption is derived
 // using the user password and a random salt. The salt is saved to be
-// used during decryption.
+// used during decryption of the key table.
 function SaveKeys() {
   var key_str = JSON.stringify(keys);
   Log("SaveKeys(): Key table to save: " + key_str);
 
   var password = GetPassword(true);
   var salt = GetRandomValues(4);
+
+  // Key to encrypt the Group-Key table
   var table_key = sjcl.misc.pbkdf2(password, salt, 3, 256);
 
-  // Encrypt the key string using the table key
+  // Encrypt Group-Key table (key_str)
   var enc_key_str = aesEncrypt(sjcl.codec.base64.fromBits(table_key), key_str);
 
   // Add MAC tag
@@ -176,7 +187,6 @@ function SaveKeys() {
   // Save to local storage
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(enc_key_str));
 
-  // Save salt for decrypting
   saveSalt(msg_salt, salt);
 }
 
@@ -186,11 +196,11 @@ function SaveKeys() {
 // derived key and load into associative array. The key required for decryption
 // is derived using user password and the saved salt.
 //
-// In case a user enters a bad password, the decryption fails. Based on this,
-// user is prompted to enter the right password again
+// The function prompts for a user password if none if found in sessionStorage.
+// Wrong password is detected when decryption fails.
 function LoadKeys() {
   keys = {}; // Reset the keys.
-  var continueLoop = 1;  // Do we need to get password from user
+  var continueLoop = 1;
   var flag = true;
   var saved = cs255.localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
@@ -246,18 +256,25 @@ function LoadKeys() {
 //
 // Does CBC-MAC tagging
 //
-// @param message (String) Message for which tag is to be calculated
-// @param masterKey (String) A master key for MAC key derivation
-// @param type (String) Type of MAC being generated
-//              - "keytable" or "message"
+// When message tags are calculated, the masterKey contains the
+// the two MAC keys needed for CBC-MAC
+//
+// When Group-Key table tag is calculated, MAC keys are generated
+// using User's password
+//
+// @param message   (String) Message for which tag is to be calculated
+// @param masterKey (String) The group key string. Empty when called
+//                           for Group-Key table tagging.
+// @param type      (String) Type of MAC being generated
+//                             - "keytable": Tag Group-Key table
+//                             - "message": Tag messages
 // @return (String) The tag + message on success
 function addMAC(message, masterKey, type) {
 
   if (type == "keytable") {
     var password = GetPassword(true);
     // If we are calculating the MAC of the keytable, then
-    // generate two new keys and use them. Other users dont
-    // need these keys as keytable is not shared.
+    // generate two new keys and use them.
     var salt1 = getSalt(mac_salt1);
     if (salt1 == "ERROR") {
       Log("addMAC(): Salt1 not found. Creating one");
@@ -273,6 +290,7 @@ function addMAC(message, masterKey, type) {
     var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
     var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
   } else {
+    // Message tag. The masterKey contains the required MAC keys
     Log("addMAC(): big key = " + masterKey);
     var key_arr = masterKey.split("||");
     var key1 = sjcl.codec.base64.toBits(key_arr[1]);
@@ -282,11 +300,13 @@ function addMAC(message, masterKey, type) {
   key1 = sjcl.codec.base64.fromBits(key1); // To String
   Log("addMAC(): key1 = " + key1);
 
+  // CBC-MAC = rawCBC + AES
+
   // rawCBC with key1
   var msg1 = rawCBC(key1, message);
   Log("addMAC(): msg1 = " + msg1);
 
-  // Encrypt with key2
+  // Encrypt last block with key2
   var cipher = new sjcl.cipher.aes(key2);
   var tag = cipher.encrypt(sjcl.codec.base64.toBits(msg1));
 
@@ -302,15 +322,17 @@ function addMAC(message, masterKey, type) {
   return tag + message;
 }
 
-// Strip MAC after verification
+// Verify and Strip MAC
 //
 // Recalculate the MAC for the message and compare with given
 // MAC tag
 //
-// @param (String) 'Tag + Message' for which MAC has to be verified
-// @param masterKey (String) A master key for MAC key derivation
-// @param type (String) Type of MAC being generated
-//              - "keytable" or "message"
+// @param           (String) 'Tag + Message' for which MAC has to be verified
+// @param masterKey (String) The group key string. Empty when called
+//                           for Group-Key table tag verification
+// @param type      (String) Type of MAC being verified
+//                             - "keytable": Tag Group-Key table
+//                             - "message": Tag messages
 // @return (String) The message if verification succeeds
 //                  ERROR if verification fails
 function verifyAndRemoveMAC(message, masterKey, type) {
@@ -327,9 +349,14 @@ function verifyAndRemoveMAC(message, masterKey, type) {
     var password = GetPassword(true);
     var salt1 = getSalt(mac_salt1);
     var salt2 = getSalt(mac_salt2);
+    if (salt1 == "ERROR" || salt2 == "ERROR") {
+      Log("VerifyAndRemoveMAC(): Required salts not found.");
+      return ERROR;
+    }
     var key1 = sjcl.misc.pbkdf2(password, salt1, 3, 256);
     var key2 = sjcl.misc.pbkdf2(password, salt2, 3, 256);
   } else {
+    // Message tag. The masterKey contains the required MAC keys
     Log("addMAC(): big key = " + masterKey);
     var key_arr = masterKey.split("||");
     var key1 = sjcl.codec.base64.toBits(key_arr[1]);
@@ -355,8 +382,8 @@ function verifyAndRemoveMAC(message, masterKey, type) {
   Log("VerifyAndRemoveMAC(): input tag = " + msg_tag);
   Log("VerifyAndRemoveMAC(): calc  tag = " + tag);
 
-  // Doing direct comparison here. Could lead to timing attacks. This is ok for the
-  // the project. But ideally we need to have a different comparison.
+  // Doing direct comparison here. Could lead to timing attacks. Ideally
+  // do a different comparison
   if (msg_tag == tag) {
     return message;
   } else {
@@ -378,8 +405,7 @@ function rawCBC(key, msg) {
   // Pad if required
   var paddedAsciiStr = padAscii(asciiStr);
 
-  // Although an IV/xorBlock is not needed, just having it here 
-  // as its easier. Note that this xorBlock is not for security.
+  // Hardcoded IV
   var xorBlock = new Array(4);
   xorBlock[0] = 42; xorBlock[1] = 42; xorBlock[3] = 42; xorBlock[4] = 42;
 
@@ -408,7 +434,6 @@ function rawCBC(key, msg) {
 function aesEncrypt(key, msg) {
     key = sjcl.codec.base64.toBits(key);
     var cipher = new sjcl.cipher.aes(key);
-
     var cipherText = new Array();
     var xorBlock = new Array();
 
@@ -420,6 +445,7 @@ function aesEncrypt(key, msg) {
     // pad if required
     var paddedAsciiStr = padAscii(asciiStr);
 
+    // Append xorBlock
     cipherText = cipherText.concat(xorBlock);
 
     while (paddedAsciiStr.length > 0) {
@@ -439,8 +465,8 @@ function aesEncrypt(key, msg) {
 // extra padding is removed to get the ascii equivalent of the plain text.
 // This is then converted to a character string and returned.
 //
-// @param (String) key Key used to decrypt
-// @param (String) ctext The cipher text message to decrypt
+// @param  (String) key Key used to decrypt
+// @param  (String) ctext The cipher text message to decrypt
 // @return (String) Decrypted string, encoded as a string.
 function aesDecrypt(key, ctext) {
     // Convert from string to object
@@ -478,7 +504,7 @@ function saveSalt(name, salt) {
 
 // Retrive the salt from local storage
 //
-// @param (String) name The name of the salt to retrieve
+// @param  (String) name The name of the salt to retrieve
 // @return (Object) The salt. null on error.
 function getSalt(name) {
   var salt_str, salt;
@@ -493,9 +519,7 @@ function getSalt(name) {
   return "ERROR";
 }
 
-// XORs two arrays
-// 
-// The two arrays must be the same length
+// XORs two arrays of same length
 //
 // @param arr1
 // @param arr2
@@ -599,12 +623,12 @@ function GetPassword(fromSessionStorage) {
         password = sessionStorage.getItem(kdp);
     }
     if(fromSessionStorage == false || password == null) {
-        password = prompt("Enter key database password", "");
-    if (password.length > 32) {
-      alert("Too long for a password. Truncating to 32 characters");
-      password = password.substr(0,32);
-    }
-        sessionStorage.setItem(kdp, password);
+      password = prompt("Enter key database password", "");
+      if (password.length > 32) {
+        alert("Too long for a password. Truncating to 32 characters");
+        password = password.substr(0,32);
+      }
+      sessionStorage.setItem(kdp, password);
     }
     Log("GetPassword(): password = " + password);
     return password;
